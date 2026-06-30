@@ -22,12 +22,22 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    // Preview applies the COOP/COEP headers from vite.config.ts that Pyodide
-    // needs for cross-origin isolation.
-    command: "pnpm preview --port 4173 --strictPort",
-    url: "http://localhost:4173/myst-viewer/",
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      // The vite preview server for the basic live-compute smoke (compute.spec.ts).
+      command: "pnpm preview --port 4173 --strictPort",
+      url: "http://localhost:4173/myst-viewer/",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      // Header-less static server mimicking GitHub Pages — NO COOP/COEP. Proves
+      // the kernel boots/runs on a non-isolated origin (compute-pages.spec.ts).
+      // Requires `pnpm build` first so dist/ exists.
+      command: "node scripts/serve-dist.mjs",
+      url: "http://localhost:4180/myst-viewer/",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+  ],
 });

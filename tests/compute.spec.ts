@@ -52,9 +52,9 @@ test("Activate boots JupyterLite and runs a cell to produce live output", async 
   const activate = page.getByRole("button", { name: "Activate" });
   await expect(activate).toBeVisible();
 
-  // Confirm the page is cross-origin isolated (COOP/COEP applied) — a
-  // precondition for the Pyodide worker.
-  expect(await page.evaluate(() => self.crossOriginIsolated)).toBe(true);
+  // The kernel runs WITHOUT cross-origin isolation (no COOP/COEP here); confirm
+  // we're indeed not isolated, so this exercises the same path as Pages.
+  expect(await page.evaluate(() => self.crossOriginIsolated)).toBe(false);
 
   // Opt in: this is the only point WASM/the kernel is allowed to boot.
   await activate.click();

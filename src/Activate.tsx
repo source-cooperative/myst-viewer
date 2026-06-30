@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PropsWithChildren } from "react";
 import {
   ThebeBundleLoaderProvider,
@@ -80,56 +80,97 @@ export function Activate({ onActivate }: { onActivate: () => void }) {
   );
 }
 
-/**
- * Kicks the build → session pipeline, but ONLY once thebe-core is loaded and the
- * JupyterLite server is connected. This ordering matters: @myst-theme/jupyter's
- * build pipeline advances to "wait-for-server" as soon as plotly (a fast local
- * chunk) loads, and would unmount its NotebookBuilder before thebe-core (an
- * ~18MB script) is ready — leaving the notebook unbuilt. Waiting for core + a
- * ready server means the notebook is built (and its session started) correctly.
- */
-function AutoStart() {
-  const { start } = useExecutionScope();
-  const { core } = useThebeLoader();
-  const { ready: serverReady } = useThebeServer();
-  const started = useRef(false);
-  useEffect(() => {
-    if (started.current || !core || !serverReady) return;
-    started.current = true;
-    start(SLUG);
-  }, [core, serverReady, start]);
-  return null;
-}
+// If the kernel hasn't booted within this window, stop showing "Starting…" and
+// fail loudly with a retry. Otherwise a stalled Pyodide CDN download or a
+// browser that can't run the kernel would hang forever — the thebe server error
+// stays null in those cases, so there's nothing else to surface.
+const BOOT_TIMEOUT_MS = 90_000;
 
 /**
- * Small banner reflecting kernel boot progress.
+ * Drives the boot and reflects its progress.
  *
- * We key "ready" off the actual kernel session being attached to this doc's
- * notebook scope rather than @myst-theme/jupyter's page-level `ready`, which (for
- * a single notebook with no dependencies) flips true before the session attaches.
+ * - Kicks `start(SLUG)` (once per attempt) only after thebe-core is loaded AND
+ *   the JupyterLite server is connected. The wait matters: @myst-theme/jupyter's
+ *   build pipeline advances to "wait-for-server" as soon as plotly (a fast local
+ *   chunk) loads, and would unmount its NotebookBuilder before thebe-core (an
+ *   ~18MB script) is ready — leaving the notebook unbuilt.
+ * - "ready" keys off the actual attached kernel session, not @myst-theme/jupyter's
+ *   page-level `ready` (which, for a single dependency-less notebook, flips true
+ *   before the session attaches).
+ * - If the session never attaches within BOOT_TIMEOUT_MS, surfaces a visible
+ *   error + Retry instead of hanging.
  */
-function ComputeStatusBar() {
-  const { state } = useExecutionScope();
-  const { error } = useThebeServer();
+function ComputeStatus() {
+  const { start, state } = useExecutionScope();
+  const { core } = useThebeLoader();
+  const { ready: serverReady, error } = useThebeServer();
   const sessionReady = !!state.pages[SLUG]?.scopes[SLUG]?.session;
+  const [attempt, setAttempt] = useState(0);
+  const [timedOut, setTimedOut] = useState(false);
+  const startedAttempt = useRef(-1);
+
+  // Start once per attempt, when core + server are ready.
+  useEffect(() => {
+    if (!core || !serverReady) return;
+    if (startedAttempt.current === attempt) return;
+    startedAttempt.current = attempt;
+    start(SLUG);
+  }, [core, serverReady, start, attempt]);
+
+  // Boot deadline, (re)armed on activation/retry; cleared once the session attaches.
+  useEffect(() => {
+    if (sessionReady) return;
+    const t = setTimeout(() => setTimedOut(true), BOOT_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [sessionReady, attempt]);
+
+  const retry = () => {
+    setTimedOut(false);
+    setAttempt((a) => a + 1);
+  };
+
+  const failed = !sessionReady && (timedOut || !!error);
+  const status = sessionReady ? "ready" : failed ? "error" : "starting";
   let message: string;
-  if (error && !sessionReady) message = `Compute error: ${error}`;
-  else if (sessionReady) message = "Python ready — run the cells below.";
+  if (sessionReady) message = "Python ready — run the cells below.";
+  else if (timedOut)
+    message =
+      "Python didn’t start in time — the kernel download may have stalled or this " +
+      "browser can’t run it. ";
+  else if (error) message = `Compute error: ${error} `;
   else message = "Starting Python… booting the in-browser kernel (first run is large).";
+
   return (
     <div
-      data-compute-status={sessionReady ? "ready" : error ? "error" : "starting"}
+      data-compute-status={status}
       role="status"
       style={{
         margin: "1rem 0",
         padding: "0.5rem 0.75rem",
         borderRadius: "0.375rem",
-        background: error && !sessionReady ? "#fee2e2" : sessionReady ? "#dcfce7" : "#fef9c3",
+        background: failed ? "#fee2e2" : sessionReady ? "#dcfce7" : "#fef9c3",
         color: "#1f2937",
         fontSize: "0.95rem",
       }}
     >
       {message}
+      {failed && (
+        <button
+          type="button"
+          onClick={retry}
+          style={{
+            marginLeft: "0.25rem",
+            padding: "0.15rem 0.6rem",
+            cursor: "pointer",
+            borderRadius: "0.25rem",
+            border: "1px solid #b91c1c",
+            background: "white",
+            color: "#b91c1c",
+          }}
+        >
+          Retry
+        </button>
+      )}
     </div>
   );
 }
@@ -154,8 +195,7 @@ export function ComputeProviders({ root, children }: PropsWithChildren<{ root: M
       <ThebeServerProvider connect useJupyterLite options={THEBE_OPTIONS}>
         <BusyScopeProvider>
           <ExecuteScopeProvider enable contents={contents}>
-            <ComputeStatusBar />
-            <AutoStart />
+            <ComputeStatus />
             {children}
           </ExecuteScopeProvider>
         </BusyScopeProvider>

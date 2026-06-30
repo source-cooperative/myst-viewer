@@ -5,8 +5,10 @@
 // chunks (and a JupyterLite service worker) from the same path, so we copy the
 // entire `dist/lib` tree, not just the entry files.
 //
-// Run automatically via the `predev` / `prebuild` npm scripts. The output is
-// gitignored — it is ~18MB of vendored build artifacts that we never edit.
+// Chained explicitly into the `dev` and `build` scripts (NOT a pre/post
+// lifecycle hook, which `enable-pre-post-scripts=false` would silently skip,
+// shipping a site whose runtime `<script src=".../thebe/…">` 404s). The output
+// is gitignored — it is ~18MB of vendored build artifacts that we never edit.
 import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +24,11 @@ const sources = [
 
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
+// Both packages flatten into the same out dir (the loader injects
+// thebe-core.min.js / thebe-lite.min.js from one publicPath). Their webpack
+// chunk filenames are numeric and could in principle collide on an upgrade;
+// they've shipped disjoint names so far. If a future bump overwrites a chunk,
+// split them into separate subdirs + publicPaths.
 for (const src of sources) {
   await cp(src, out, { recursive: true });
 }

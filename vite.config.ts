@@ -1,26 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// JupyterLite/Pyodide (booted on demand via thebe-lite) runs the kernel in a
-// web worker and pulls Pyodide from a cross-origin CDN (cdn.jsdelivr.net). To
-// allow that under cross-origin isolation we set COOP/COEP on every dev/preview
-// response. COEP is `credentialless` rather than `require-corp`: the jsDelivr
-// CDN does not send `Cross-Origin-Resource-Policy`, so `require-corp` would
-// block the Pyodide download, whereas `credentialless` loads the cross-origin
-// (no-credentials) resource without requiring that header. See README "Live
-// computation".
-const crossOriginIsolation = {
-  "Cross-Origin-Opener-Policy": "same-origin",
-  "Cross-Origin-Embedder-Policy": "credentialless",
-};
+// NOTE: We deliberately do NOT set COOP/COEP cross-origin-isolation headers.
+// The thebe-lite JupyterLite (Pyodide) kernel runs fine WITHOUT isolation
+// (verified: print(1+1) → 2 with crossOriginIsolated === false). Worse, with
+// isolation thebe-lite routes to a SharedArrayBuffer + service-worker comms path
+// whose worker (`/service-worker.js`) 404s under the `/myst-viewer/` base and
+// hangs. Staying non-isolated keeps dev/preview behaving exactly like the
+// header-less GitHub Pages deploy. See README "Live computation".
 
 // GitHub Pages serves this site from `username.github.io/myst-viewer/`, so all
 // asset URLs must be prefixed with the repo subpath.
 export default defineConfig((_env) => ({
   base: "/myst-viewer/",
   plugins: [react()],
-  server: { headers: crossOriginIsolation },
-  preview: { headers: crossOriginIsolation },
   test: {
     environment: "jsdom",
     globals: true,

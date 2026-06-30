@@ -36,33 +36,48 @@ page load** — only on the explicit Activate click.
   runtime. The bundles and Pyodide are **not** part of the app JS bundle, so the
   Pages deploy stays independent of the kernel.
 
-### Cross-origin isolation finding (the local boot spike)
+### Cross-origin isolation: NOT needed (verified)
 
 Pyodide runs the kernel in a Web Worker and `thebe-lite` pulls Pyodide from a
-**cross-origin CDN** (`cdn.jsdelivr.net/pyodide/v0.27.0`). Cross-origin
-isolation (`crossOriginIsolated === true`) is required. `vite.config.ts` sets,
-on **both** the dev `server` and `preview`:
+cross-origin CDN (`cdn.jsdelivr.net/pyodide/v0.27.0`). The intuitive assumption
+is that this needs cross-origin isolation (`crossOriginIsolated === true`, which
+gates `SharedArrayBuffer`). **It doesn't.** Measured on this stack:
 
-```
-Cross-Origin-Opener-Policy:   same-origin
-Cross-Origin-Embedder-Policy: credentialless
-```
+| Origin | `crossOriginIsolated` | `print(1+1)` |
+| --- | --- | --- |
+| header-less static server (Pages-like) | `false` | **works (~5s)** |
+| `vite preview` with COOP/COEP `credentialless` | `true` | works |
+| header-less + `coi-serviceworker` (forced isolation) | `true` | **hangs** |
 
-`credentialless` (not `require-corp`) is deliberate: jsDelivr does not send a
-`Cross-Origin-Resource-Policy` header, so `require-corp` would block the Pyodide
-download, whereas `credentialless` loads the cross-origin (no-credentials)
-resource without requiring CORP. With these two headers the kernel boots and
-runs `print(1 + 1) → 2` locally; **no `coi-serviceworker` is needed.** Verified
-versions: `thebe-core`/`thebe-lite`/`thebe-react` `0.5.0`, `@myst-theme/jupyter`
-`1.3.1`, Pyodide `0.27.0`.
+So the JupyterLite/Pyodide kernel executes fine with **no** COOP/COEP. Forcing
+isolation is actively harmful here: thebe-lite then switches to a
+`SharedArrayBuffer` + service-worker comms path that needs its own
+`/service-worker.js`, which 404s under the `/myst-viewer/` base path and hangs.
 
-> Note: `credentialless` is a Chromium/Firefox feature (not Safari). On GitHub
-> Pages, set the equivalent COOP/COEP response headers for the kernel to boot.
+**Consequences:**
+
+- `vite.config.ts` sets **no** COOP/COEP headers — dev/preview behave exactly
+  like the header-less GitHub Pages deploy. No `coi-serviceworker` is used.
+- **GitHub Pages works as-is** — it serves header-less, which is the working
+  (non-isolated) path. Nothing extra to configure.
+
+`tests/compute-pages.spec.ts` is the deployment-representative proof: it serves
+the built site from a plain static server (`scripts/serve-dist.mjs`, no headers,
+mimicking Pages), asserts the page is **not** isolated, and still boots the
+kernel and runs `print(1 + 1) → 2`.
+
+Verified versions: `thebe-core`/`thebe-lite`/`thebe-react` `0.5.0`,
+`@myst-theme/jupyter` `1.3.1`, Pyodide `0.27.0`.
+
+> Note: `input()` and other synchronous-stdin features do need `SharedArrayBuffer`
+> (isolation) and a working JupyterLite service worker; those are out of scope
+> here. The boot surfaces a visible error + Retry after ~90s rather than hanging
+> if the kernel ever fails to start.
 >
-> Known non-fatal warning: `thebe-lite` registers its JupyterLite service worker
-> at the origin root (`/service-worker.js`), which 404s under the `/myst-viewer/`
-> base. That only disables filesystem/contents *sync* — code execution falls back
-> to in-memory and is unaffected.
+> Known non-fatal warning: `thebe-lite` registers its own JupyterLite service
+> worker at the origin root (`/service-worker.js`), which 404s under the
+> `/myst-viewer/` base. That only disables filesystem/contents *sync* — code
+> execution falls back to in-memory and is unaffected.
 
 ## Demos
 
@@ -91,7 +106,13 @@ pnpm e2e      # Playwright live-compute smoke (boots a real kernel); run pnpm bu
 ```
 
 `pnpm e2e` is intentionally **separate** from `pnpm test` and the deploy
-workflow: it serves `pnpm preview`, loads a fixture `.ipynb`, clicks Activate,
-waits for the kernel, runs a cell, and asserts the live output — a ~tens-of-MB
-Pyodide boot that should not gate CI or Pages. First run:
-`pnpm exec playwright install chromium`.
+workflow (a ~tens-of-MB Pyodide boot should not gate CI or Pages). Run
+`pnpm build` first, then `pnpm e2e`, which runs two specs:
+
+- `compute.spec.ts` — against `pnpm preview`: Activate, wait for the kernel, run
+  a cell, assert the live `2`.
+- `compute-pages.spec.ts` — against a header-less static server
+  (`scripts/serve-dist.mjs`, mimicking Pages): asserts the page is **not**
+  cross-origin isolated and the kernel still boots/runs `print(1+1) → 2`.
+
+First run: `pnpm exec playwright install chromium`.
