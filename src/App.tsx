@@ -11,7 +11,13 @@ import { observeHeight, postHeight } from "./iframeBridge";
 type State =
   | { status: "loading" }
   | { status: "home"; theme: "light" | "dark" } // no ?url= → landing page
-  | { status: "loaded"; root: MystRoot; theme: "light" | "dark" }
+  | {
+      status: "loaded";
+      root: MystRoot;
+      theme: "light" | "dark";
+      activate: boolean;
+      run: boolean;
+    }
   | { status: "error"; kind: SourceError["kind"] } // friendly panel
   | { status: "raw"; text: string }; // fetched, but couldn't render
 
@@ -30,14 +36,14 @@ function App() {
     (async () => {
       let text = "";
       try {
-        const { url, theme, base } = parseParams(window.location.search);
+        const { url, theme, base, activate, run } = parseParams(window.location.search);
         text = await fetchSource(url);
         const parsed =
           detectKind(url) === "ipynb" ? parseNotebook(text) : parseMarkdown(text);
         // When embedded with ?base=, expose SOURCE_URL so code can read the
         // product's sibling files (public/unlisted only). No-op without base.
         const root = withSourceUrl(parsed, base);
-        if (!cancelled) setState({ status: "loaded", root, theme });
+        if (!cancelled) setState({ status: "loaded", root, theme, activate, run });
       } catch (err) {
         if (cancelled) return;
         if (err instanceof SourceError) setState({ status: "error", kind: err.kind });
@@ -71,7 +77,14 @@ function App() {
         <pre>{state.text}</pre>
       </>
     );
-  return <Article root={state.root} theme={state.theme} />;
+  return (
+    <Article
+      root={state.root}
+      theme={state.theme}
+      activate={state.activate}
+      run={state.run}
+    />
+  );
 }
 
 export default App;

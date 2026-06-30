@@ -34,10 +34,16 @@ The query string is the integration contract — keep it stable.
 
 | Param    | Required | Value                                                                 |
 | -------- | -------- | --------------------------------------------------------------------- |
-| `url`    | yes      | Encoded absolute URL of the `.md`/`.ipynb` object to render.          |
-| `iframe` | no       | `true` — convention flag marking an embedded view.                    |
-| `theme`  | no       | `light` (default) or `dark`.                                          |
-| `base`   | no       | Product base URL; when set, exposes `SOURCE_URL` to compute cells.    |
+| `url`      | yes      | Encoded absolute URL of the `.md`/`.ipynb` object to render.        |
+| `iframe`   | no       | `true` — convention flag marking an embedded view.                  |
+| `theme`    | no       | `light` (default) or `dark`.                                        |
+| `base`     | no       | Product base URL; when set, exposes `SOURCE_URL` to compute cells.  |
+| `activate` | no       | `true` — boot the kernel on load, skipping the Activate button.     |
+| `run`      | no       | `true` — also run every cell once the kernel is ready (implies `activate`). |
+
+> Note: `activate`/`run` boot an ~18MB in-browser kernel on page load, bypassing
+> the default "no WASM until an explicit click" behavior. Use them for
+> intentionally-interactive links, not as the default embed.
 
 The iframe `src` source.coop uses:
 

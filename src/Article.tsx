@@ -31,11 +31,15 @@ import "./article.css";
 export function Article({
   root,
   theme,
+  activate = false,
+  run = false,
 }: {
   root: MystRoot;
   theme: "light" | "dark";
+  activate?: boolean; // boot the kernel on load, skipping the Activate button
+  run?: boolean; // run all cells once the kernel is ready (implies activate)
 }) {
-  const [active, setActive] = useState(false);
+  const [active, setActive] = useState(activate);
   const hasCode = useMemo(() => hasComputeCells(root.children), [root]);
   const renderers = active ? COMPUTE_RENDERERS : DEFAULT_RENDERERS;
   const body = <MyST ast={root.children} />;
@@ -73,7 +77,13 @@ export function Article({
             data-theme={theme}
           >
             {hasCode && !active && <Activate onActivate={() => setActive(true)} />}
-            {active ? <ComputeProviders root={root}>{body}</ComputeProviders> : body}
+            {active ? (
+              <ComputeProviders root={root} autorun={run}>
+                {body}
+              </ComputeProviders>
+            ) : (
+              body
+            )}
           </article>
         </RadixTheme>
       </ArticleProvider>

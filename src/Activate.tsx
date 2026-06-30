@@ -100,14 +100,15 @@ const BOOT_TIMEOUT_MS = 90_000;
  * - If the session never attaches within BOOT_TIMEOUT_MS, surfaces a visible
  *   error + Retry instead of hanging.
  */
-function ComputeStatus() {
-  const { start, state } = useExecutionScope();
+function ComputeStatus({ autorun }: { autorun: boolean }) {
+  const { start, execute, state } = useExecutionScope();
   const { core } = useThebeLoader();
   const { ready: serverReady, error } = useThebeServer();
   const sessionReady = !!state.pages[SLUG]?.scopes[SLUG]?.session;
   const [attempt, setAttempt] = useState(0);
   const [timedOut, setTimedOut] = useState(false);
   const startedAttempt = useRef(-1);
+  const ranAuto = useRef(false);
 
   // Start once per attempt, when core + server are ready.
   useEffect(() => {
@@ -123,6 +124,13 @@ function ComputeStatus() {
     const t = setTimeout(() => setTimedOut(true), BOOT_TIMEOUT_MS);
     return () => clearTimeout(t);
   }, [sessionReady, attempt]);
+
+  // ?run=true: execute every cell once, as soon as the session attaches.
+  useEffect(() => {
+    if (!autorun || !sessionReady || ranAuto.current) return;
+    ranAuto.current = true;
+    execute(SLUG);
+  }, [autorun, sessionReady, execute]);
 
   const retry = () => {
     setTimedOut(false);
@@ -185,7 +193,11 @@ function ComputeStatus() {
  * Inside it, the article re-renders with COMPUTE_RENDERERS so code cells gain a
  * Run button (via @myst-theme/jupyter) and outputs render live.
  */
-export function ComputeProviders({ root, children }: PropsWithChildren<{ root: MystRoot }>) {
+export function ComputeProviders({
+  root,
+  autorun = false,
+  children,
+}: PropsWithChildren<{ root: MystRoot; autorun?: boolean }>) {
   const contents = useMemo(
     () => ({ slug: SLUG, kind: SourceFileKind.Notebook, mdast: root as never }),
     [root],
@@ -195,7 +207,7 @@ export function ComputeProviders({ root, children }: PropsWithChildren<{ root: M
       <ThebeServerProvider connect useJupyterLite options={THEBE_OPTIONS}>
         <BusyScopeProvider>
           <ExecuteScopeProvider enable contents={contents}>
-            <ComputeStatus />
+            <ComputeStatus autorun={autorun} />
             {children}
           </ExecuteScopeProvider>
         </BusyScopeProvider>
