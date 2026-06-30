@@ -1,0 +1,422 @@
+/*
+ * Styling for the rendered MyST article, matched to source.coop's look.
+ *
+ * Strategy (no Tailwind pipeline): myst-to-react emits Tailwind utility classes
+ * (inert here) plus semantic `myst-*` classes. We style via those semantic
+ * classes and plain element selectors scoped under `.myst-article`, using Radix
+ * Themes CSS variables (--gray-*, --blue-*, --space-*, --font-size-*, …) so the
+ * gray palette, 110% scaling, and light/dark scales all come from the <Theme>.
+ *
+ * Mirrors source.coop's MarkdownViewer: Radix Heading scale (h1→size8 … h6→
+ * size3), gray underlined links, surface tables, inline-code chip, and Radix-
+ * scale admonitions (note→blue, tip→green, warning→orange, danger/error→red).
+ */
+
+/* --- Fonts: override Radix defaults to source.coop's stack -----------------
+ * Berkeley Mono is a paid font we can't ship, so the code font falls back to
+ * the system mono stack (same fallback source.coop lists after Berkeley Mono). */
+.radix-themes {
+  --default-font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --heading-font-family: var(--default-font-family);
+  --code-font-family: Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* The embedded viewer sizes its iframe to content height; drop Radix's root
+ * `min-height: 100vh` so a short doc doesn't force a tall, half-empty frame.
+ * (Plain attribute selector outspecifies Radix's `:where()`-wrapped rule.) */
+.radix-themes[data-is-root-theme="true"] {
+  min-height: 0;
+}
+
+/* --- Article container ----------------------------------------------------- */
+.myst-article {
+  max-width: 54rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-5) var(--space-8);
+  font-family: var(--default-font-family);
+  font-size: var(--font-size-3);
+  line-height: 1.6;
+  color: var(--gray-12);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* --- Headings (Radix Heading scale) ---------------------------------------- */
+.myst-article :where(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--heading-font-family);
+  font-weight: var(--font-weight-bold);
+  color: var(--gray-12);
+  scroll-margin-top: var(--space-5);
+}
+.myst-article h1 {
+  font-size: var(--font-size-8);
+  line-height: var(--heading-line-height-8);
+  letter-spacing: var(--letter-spacing-8);
+  margin: 0 0 var(--space-4);
+}
+.myst-article h2 {
+  font-size: var(--font-size-7);
+  line-height: var(--heading-line-height-7);
+  letter-spacing: var(--letter-spacing-7);
+  margin: var(--space-6) 0 var(--space-3);
+}
+.myst-article h3 {
+  font-size: var(--font-size-6);
+  line-height: var(--heading-line-height-6);
+  letter-spacing: var(--letter-spacing-6);
+  margin: var(--space-5) 0 var(--space-2);
+}
+.myst-article h4 {
+  font-size: var(--font-size-5);
+  line-height: var(--heading-line-height-5);
+  margin: var(--space-4) 0 var(--space-2);
+}
+.myst-article h5 {
+  font-size: var(--font-size-4);
+  line-height: var(--heading-line-height-4);
+  margin: var(--space-4) 0 var(--space-2);
+}
+.myst-article h6 {
+  font-size: var(--font-size-3);
+  line-height: var(--heading-line-height-3);
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+/* --- Body flow ------------------------------------------------------------- */
+.myst-article p {
+  margin: 0 0 var(--space-3);
+}
+.myst-article ul,
+.myst-article ol {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+}
+.myst-article ul {
+  list-style: disc;
+}
+.myst-article ol {
+  list-style: decimal;
+}
+.myst-article li {
+  margin: var(--space-1) 0;
+}
+.myst-article li > ul,
+.myst-article li > ol {
+  margin-bottom: 0;
+}
+.myst-article blockquote {
+  margin: var(--space-4) 0;
+  padding: 0 var(--space-4);
+  color: var(--gray-11);
+  border-left: 0.25em solid var(--gray-6);
+}
+.myst-article hr {
+  border: none;
+  border-top: 1px solid var(--gray-6);
+  margin: var(--space-5) 0;
+}
+.myst-article img {
+  max-width: 100%;
+  height: auto;
+}
+.myst-article strong {
+  font-weight: var(--font-weight-bold);
+}
+.myst-article em {
+  font-style: italic;
+}
+
+/* --- Links (gray accent, underline like source.coop) ----------------------- */
+.myst-article a {
+  color: var(--accent-11);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.myst-article a:hover {
+  text-decoration: none;
+}
+.myst-article a.link svg,
+.myst-article a .link-icon {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-left: 0.15em;
+  vertical-align: text-top;
+}
+/* Heading permalink (the `¶` anchor) — quiet until the heading is hovered. */
+.myst-article :is(h1, h2, h3, h4, h5, h6) a {
+  color: var(--gray-9);
+  font-weight: var(--font-weight-regular);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.myst-article :is(h1, h2, h3, h4, h5, h6):hover a {
+  opacity: 0.6;
+}
+.myst-article :is(h1, h2, h3, h4, h5, h6) a:hover {
+  opacity: 1;
+}
+
+/* --- Inline code chip ------------------------------------------------------ */
+.myst-article code {
+  font-family: var(--code-font-family);
+  font-size: 0.875em;
+  background: var(--gray-3);
+  color: var(--gray-12);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+}
+.dark .myst-article code {
+  background: var(--gray-6);
+}
+/* …but not inside code blocks (those are the syntax-highlighted body). */
+.myst-article :is(pre, .myst-code-body) code,
+.dark .myst-article :is(pre, .myst-code-body) code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* --- Code blocks ----------------------------------------------------------- */
+.myst-article .myst-code {
+  position: relative;
+  margin: var(--space-4) 0;
+}
+.myst-article .myst-code-body {
+  background: var(--gray-2);
+  border: 1px solid var(--gray-4);
+  color: var(--gray-12);
+  font-family: var(--code-font-family);
+  font-size: var(--font-size-2);
+  line-height: 1.55;
+  padding: var(--space-3);
+  overflow: auto;
+}
+.myst-article .myst-code-body pre {
+  margin: 0;
+  background: transparent;
+  font-family: inherit;
+}
+.myst-article .myst-code-filename-title {
+  font-family: var(--code-font-family);
+  font-size: var(--font-size-1);
+  color: var(--gray-11);
+  padding: var(--space-1) var(--space-2);
+}
+.myst-article .myst-code-copy-icon {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0.35rem;
+  background: var(--gray-1);
+  border: 1px solid var(--gray-5);
+  color: var(--gray-11);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.myst-article .myst-code:hover .myst-code-copy-icon,
+.myst-article .myst-code-copy-icon:focus {
+  opacity: 1;
+}
+.myst-article .myst-code-copy-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* --- Syntax highlighting: GitHub palette (react-syntax-highlighter / hljs) -- */
+/* Light = github-light. Plain `hljs-*` token classes (work across hljs v10/v11). */
+.myst-article .myst-code-body .hljs-comment,
+.myst-article .myst-code-body .hljs-quote {
+  color: #6a737d;
+}
+.myst-article .myst-code-body .hljs-keyword,
+.myst-article .myst-code-body .hljs-selector-tag,
+.myst-article .myst-code-body .hljs-doctag,
+.myst-article .myst-code-body .hljs-type {
+  color: #d73a49;
+}
+.myst-article .myst-code-body .hljs-string,
+.myst-article .myst-code-body .hljs-regexp,
+.myst-article .myst-code-body .hljs-meta .hljs-string {
+  color: #032f62;
+}
+.myst-article .myst-code-body .hljs-number,
+.myst-article .myst-code-body .hljs-literal,
+.myst-article .myst-code-body .hljs-variable,
+.myst-article .myst-code-body .hljs-template-variable,
+.myst-article .myst-code-body .hljs-attr,
+.myst-article .myst-code-body .hljs-attribute,
+.myst-article .myst-code-body .hljs-selector-id,
+.myst-article .myst-code-body .hljs-selector-class {
+  color: #005cc5;
+}
+.myst-article .myst-code-body .hljs-title,
+.myst-article .myst-code-body .hljs-section,
+.myst-article .myst-code-body .hljs-function {
+  color: #6f42c1;
+}
+.myst-article .myst-code-body .hljs-built_in,
+.myst-article .myst-code-body .hljs-builtin-name,
+.myst-article .myst-code-body .hljs-symbol,
+.myst-article .myst-code-body .hljs-bullet {
+  color: #e36209;
+}
+.myst-article .myst-code-body .hljs-name,
+.myst-article .myst-code-body .hljs-tag {
+  color: #22863a;
+}
+.myst-article .myst-code-body .hljs-meta,
+.myst-article .myst-code-body .hljs-params {
+  color: #6a737d;
+}
+.myst-article .myst-code-body .hljs-emphasis {
+  font-style: italic;
+}
+.myst-article .myst-code-body .hljs-strong {
+  font-weight: 600;
+}
+
+/* Dark = github-dark. */
+.dark .myst-article .myst-code-body .hljs-comment,
+.dark .myst-article .myst-code-body .hljs-quote {
+  color: #8b949e;
+}
+.dark .myst-article .myst-code-body .hljs-keyword,
+.dark .myst-article .myst-code-body .hljs-selector-tag,
+.dark .myst-article .myst-code-body .hljs-doctag,
+.dark .myst-article .myst-code-body .hljs-type {
+  color: #ff7b72;
+}
+.dark .myst-article .myst-code-body .hljs-string,
+.dark .myst-article .myst-code-body .hljs-regexp,
+.dark .myst-article .myst-code-body .hljs-meta .hljs-string {
+  color: #a5d6ff;
+}
+.dark .myst-article .myst-code-body .hljs-number,
+.dark .myst-article .myst-code-body .hljs-literal,
+.dark .myst-article .myst-code-body .hljs-variable,
+.dark .myst-article .myst-code-body .hljs-template-variable,
+.dark .myst-article .myst-code-body .hljs-attr,
+.dark .myst-article .myst-code-body .hljs-attribute,
+.dark .myst-article .myst-code-body .hljs-selector-id,
+.dark .myst-article .myst-code-body .hljs-selector-class {
+  color: #79c0ff;
+}
+.dark .myst-article .myst-code-body .hljs-title,
+.dark .myst-article .myst-code-body .hljs-section,
+.dark .myst-article .myst-code-body .hljs-function {
+  color: #d2a8ff;
+}
+.dark .myst-article .myst-code-body .hljs-built_in,
+.dark .myst-article .myst-code-body .hljs-builtin-name,
+.dark .myst-article .myst-code-body .hljs-symbol,
+.dark .myst-article .myst-code-body .hljs-bullet {
+  color: #ffa657;
+}
+.dark .myst-article .myst-code-body .hljs-name,
+.dark .myst-article .myst-code-body .hljs-tag {
+  color: #7ee787;
+}
+.dark .myst-article .myst-code-body .hljs-meta,
+.dark .myst-article .myst-code-body .hljs-params {
+  color: #8b949e;
+}
+
+/* --- Admonitions (Radix scales; appearance handles light/dark) ------------- *
+ * Per-kind color is carried in custom props so each kind only resets the vars.
+ * Base = blue (note/important); kinds below remap to green/orange/red. */
+.myst-article .myst-admonition {
+  --adm-accent: var(--blue-9);
+  --adm-bg: var(--blue-3);
+  --adm-head-bg: var(--blue-4);
+  --adm-text: var(--blue-12);
+  --adm-icon: var(--blue-11);
+  margin: var(--space-4) 0;
+  background: var(--adm-bg);
+  border-left: 4px solid var(--adm-accent);
+  color: var(--adm-text);
+  overflow: hidden;
+}
+.myst-article :is(.myst-admonition-tip, .myst-admonition-hint, .myst-admonition-seealso) {
+  --adm-accent: var(--green-9);
+  --adm-bg: var(--green-3);
+  --adm-head-bg: var(--green-4);
+  --adm-text: var(--green-12);
+  --adm-icon: var(--green-11);
+}
+.myst-article
+  :is(.myst-admonition-warning, .myst-admonition-attention, .myst-admonition-caution) {
+  --adm-accent: var(--orange-9);
+  --adm-bg: var(--orange-3);
+  --adm-head-bg: var(--orange-4);
+  --adm-text: var(--orange-12);
+  --adm-icon: var(--orange-11);
+}
+.myst-article :is(.myst-admonition-danger, .myst-admonition-error) {
+  --adm-accent: var(--red-9);
+  --adm-bg: var(--red-3);
+  --adm-head-bg: var(--red-4);
+  --adm-text: var(--red-12);
+  --adm-icon: var(--red-11);
+}
+.myst-article .myst-admonition-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--adm-head-bg);
+  color: var(--adm-text);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-3);
+}
+.myst-article .myst-admonition-header-text {
+  color: inherit;
+}
+.myst-article .myst-admonition-header-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: none;
+  color: var(--adm-icon);
+}
+.myst-article .myst-admonition-body {
+  padding: var(--space-3);
+  color: var(--adm-text);
+}
+.myst-article .myst-admonition-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* --- Tables (Radix "surface" look) ----------------------------------------- */
+.myst-article table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-3) 0 var(--space-4);
+  font-size: var(--font-size-2);
+  border: 1px solid var(--gray-6);
+}
+.myst-article th,
+.myst-article td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--gray-6);
+  text-align: left;
+  vertical-align: top;
+}
+.myst-article thead th {
+  background: var(--gray-3);
+  color: var(--gray-12);
+  font-weight: var(--font-weight-bold);
+}
+.myst-article tbody tr:last-child td {
+  border-bottom: none;
+}

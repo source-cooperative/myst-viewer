@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MyST, DEFAULT_RENDERERS } from "myst-to-react";
 import { ThemeProvider, Theme, ArticleProvider } from "@myst-theme/providers";
+import { Theme as RadixTheme } from "@radix-ui/themes";
 import { SourceFileKind } from "myst-spec-ext";
 import type { MystRoot } from "./parse";
 import {
@@ -9,6 +10,7 @@ import {
   COMPUTE_RENDERERS,
   hasComputeCells,
 } from "./Activate";
+import "./article.css";
 
 /**
  * Render a MyST AST as a themed article.
@@ -38,6 +40,15 @@ export function Article({
   const renderers = active ? COMPUTE_RENDERERS : DEFAULT_RENDERERS;
   const body = <MyST ast={root.children} />;
 
+  // Mirror the theme onto <html> so the global `.dark` hook (and anything Radix
+  // portals to <body>) reacts, matching source.coop's class-based dark strategy.
+  // The Radix <Theme appearance> below already class-tags its own subtree.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle("dark", theme === "dark");
+    return () => root.classList.remove("dark");
+  }, [theme]);
+
   return (
     <ThemeProvider
       theme={theme === "dark" ? Theme.dark : Theme.light}
@@ -45,14 +56,26 @@ export function Article({
       renderers={renderers}
     >
       <ArticleProvider kind={SourceFileKind.Notebook}>
-        {/* ponytail: myst-theme uses class-based (Tailwind) dark mode, so the
-            `.dark` class is the real styling hook; `data-theme` is just a stable
-            handle for tests/debugging. Wiring the Tailwind stylesheet is deferred
-            — this still gets a correct, theme-aware render. */}
-        <article className={theme === "dark" ? "dark" : undefined} data-theme={theme}>
-          {hasCode && !active && <Activate onActivate={() => setActive(true)} />}
-          {active ? <ComputeProviders root={root}>{body}</ComputeProviders> : body}
-        </article>
+        {/* Radix Themes tokens, matched to source.coop: square corners, gray
+            accent/gray palette, 110% scaling. `appearance` drives Radix's
+            light/dark scales AND adds the `.dark` class our article.css hooks. */}
+        <RadixTheme
+          accentColor="gray"
+          grayColor="gray"
+          radius="none"
+          scaling="110%"
+          appearance={theme}
+        >
+          {/* `data-theme` is a stable handle for tests/debugging; the visible
+              styling comes from Radix tokens + article.css `myst-*`/element rules. */}
+          <article
+            className={theme === "dark" ? "myst-article dark" : "myst-article"}
+            data-theme={theme}
+          >
+            {hasCode && !active && <Activate onActivate={() => setActive(true)} />}
+            {active ? <ComputeProviders root={root}>{body}</ComputeProviders> : body}
+          </article>
+        </RadixTheme>
       </ArticleProvider>
     </ThemeProvider>
   );

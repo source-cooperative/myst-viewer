@@ -2,10 +2,31 @@
 
 A standalone Vite + React + TypeScript single-page app, deployed to GitHub
 Pages, that fetches a MyST Markdown (`.md`) or Jupyter (`.ipynb`) document and
-renders it as a themed article. Code cells render statically; the reader can opt
-in to live, in-browser computation (JupyterLite/Pyodide). source.coop embeds it
-as an iframe, matching its existing external-viewer convention
+renders it as a themed article **styled to match source.coop**. Code cells
+render statically; the reader can opt in to live, in-browser computation
+(JupyterLite/Pyodide). source.coop embeds it as an iframe, matching its existing
+external-viewer convention
 (`https://source-cooperative.github.io/<viewer>/?iframe=true&url=<encoded object URL>`).
+
+## Styling
+
+The article reuses source.coop's design tokens directly via **Radix Themes**
+(`<Theme accentColor="gray" grayColor="gray" radius="none" scaling="110%">`), so
+it gets the same gray palette, square corners, and 110% scaling. The MyST output
+(myst-to-react's semantic `myst-*` classes + plain elements) is styled in
+`src/article.css` using Radix CSS variables — Radix Heading scale for headings,
+gray underlined links, surface tables, an inline-code chip, and admonitions
+colored by kind on Radix scales (note→blue, tip→green, warning→orange,
+danger/error→red). Code is highlighted with a GitHub light/dark palette, and
+dark mode is class-based (a `dark` class on `<html>` plus Radix `appearance`).
+
+- **Body font:** IBM Plex Sans (via `@fontsource/ibm-plex-sans`, since this is a
+  Vite app, not Next — `next/font` isn't available).
+- **Code font:** source.coop uses the paid "Berkeley Mono"; we can't ship it, so
+  the code font falls back to the system mono stack (`Menlo, Consolas,
+  monospace`) — the same fallback source.coop lists after Berkeley Mono.
+- No Tailwind build is wired in: myst-to-react's Tailwind utility classes are
+  inert; the semantic/element CSS above provides the visible styling.
 
 ## URL parameters
 

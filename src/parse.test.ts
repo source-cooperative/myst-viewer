@@ -47,6 +47,24 @@ describe("parseMarkdown", () => {
     expect(types).toContain("heading");
     expect(types).toContain("code");
   });
+
+  it("assigns a distinct, non-null key to every node (incl. sibling prose)", () => {
+    // Two sibling paragraphs used to render with key={undefined} (ensureKeys
+    // only keyed block/outputs), tripping React's "unique key" warning.
+    const prose = parseMarkdown("First paragraph.\n\nSecond paragraph.") as Node;
+    const paras = findAll(prose, (n) => n.type === "paragraph");
+    expect(paras.length).toBeGreaterThanOrEqual(2);
+    const keys = paras.map((p) => p.key);
+    expect(keys.every((k) => typeof k === "string" && k.length > 0)).toBe(true);
+    expect(new Set(keys).size).toBe(keys.length); // distinct
+
+    // And EVERY rendered node (the root's descendants — `MyST` renders
+    // `root.children`) has a non-null key now.
+    const all: Node[] = [];
+    for (const child of prose.children ?? []) findAll(child, () => true, all);
+    expect(all.length).toBeGreaterThan(0);
+    expect(all.every((n) => typeof n.key === "string" && n.key.length > 0)).toBe(true);
+  });
 });
 
 describe("parseNotebook", () => {

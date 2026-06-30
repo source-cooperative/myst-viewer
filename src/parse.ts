@@ -42,19 +42,25 @@ function unwrapDirectives(nodes: AstNode[]): AstNode[] {
   return out;
 }
 
-// Live computation (@myst-theme/jupyter) keys each executable cell off the
-// `block.key` of its `block[kind=notebook-code]` and the `id`/`key` of the
-// cell's `outputs` node (see `notebookFromMdast` in @myst-theme/jupyter). The
-// full MyST pipeline assigns these via a transform we don't run, so we assign
-// our own stable, unique keys here. Without them multiple cells would collide
-// on `undefined` and execute/route outputs to the wrong cell.
+// Two jobs, one walk:
+//  1. React keying — `MyST` renders each node with `key={node.key}`, so EVERY
+//     keyless node needs one or React logs "unique key" warnings for sibling
+//     prose (headings/paragraphs the routing pass below used to skip).
+//  2. Compute routing — @myst-theme/jupyter keys each executable cell off the
+//     `block.key` of its `block[kind=notebook-code]` and the `id`/`key` of the
+//     cell's `outputs` node (see `notebookFromMdast`). The full MyST pipeline
+//     assigns these via a transform we don't run; without them multiple cells
+//     collide on `undefined` and route outputs to the wrong cell.
+// Giving every keyless node `mv-${n}` satisfies (1) and, because `block`/
+// `outputs` nodes are nodes too, also satisfies (2) — we just additionally
+// ensure `outputs.id` (the field jupyter reads first) is set to its own key.
 let keyCounter = 0;
 function ensureKeys(nodes: AstNode[]): void {
   for (const node of nodes) {
-    if (node.type === "block" && node.key == null) node.key = `mv-${++keyCounter}`;
-    if (node.type === "outputs" && node.id == null && node.key == null) {
-      node.id = `mv-out-${++keyCounter}`;
-    }
+    if (node.key == null) node.key = `mv-${++keyCounter}`;
+    // jupyter routes outputs by `output.id ?? output.key`; mirror the key into
+    // `id` so saved/live outputs stay matched to their cell.
+    if (node.type === "outputs" && node.id == null) node.id = node.key;
     if (node.children) ensureKeys(node.children);
   }
 }
