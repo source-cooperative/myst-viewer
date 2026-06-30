@@ -118,3 +118,37 @@ export function parseNotebook(text: string): MystRoot {
   ensureKeys(children);
   return { type: "root", children: children as MystRoot["children"] };
 }
+
+/**
+ * When the viewer is embedded with `?base=<product base URL>`, prepend ONE
+ * visible, runnable code cell that defines `SOURCE_URL`, so authors' code can
+ * read sibling files, e.g. `pd.read_parquet(f"{SOURCE_URL}/data.parquet")`.
+ * The JupyterLite kernel keeps state across a session, so defining it in the
+ * first cell makes it available to every later cell once the reader runs it.
+ *
+ * The cell uses the same executable shape as our reconciliation
+ * (`block[kind=notebook-code] > [code, outputs]`) and goes through `ensureKeys`,
+ * so it's runnable and its key/output routing can't collide with other cells.
+ *
+ * ponytail: public/unlisted products only. Restricted products are out of scope
+ * — the viewer is a cross-origin iframe with no `sc_proxy_creds` cookie, so
+ * presigned/cred-bearing URLs are a separate future design.
+ */
+export function withSourceUrl(root: MystRoot, base?: string): MystRoot {
+  if (!base) return root;
+  // JSON.stringify yields a valid double-quoted literal even for a stray `"`.
+  const value = `SOURCE_URL = ${JSON.stringify(base)}  # base URL of this product's files`;
+  const cell: AstNode = {
+    type: "block",
+    kind: "notebook-code",
+    children: [
+      { type: "code", lang: "python", executable: true, value },
+      { type: "outputs", children: [] },
+    ],
+  };
+  ensureKeys([cell]); // unique block.key / outputs.id (keyCounter is monotonic)
+  return {
+    ...root,
+    children: [cell, ...(root.children as AstNode[])] as MystRoot["children"],
+  };
+}

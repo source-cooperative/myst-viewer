@@ -79,6 +79,30 @@ Verified versions: `thebe-core`/`thebe-lite`/`thebe-react` `0.5.0`,
 > `/myst-viewer/` base. That only disables filesystem/contents *sync* — code
 > execution falls back to in-memory and is unaffected.
 
+## Reading the product's own files
+
+When embedded with `?base=<product base URL>`, the viewer prepends one visible,
+runnable code cell at the top of the article:
+
+```python
+SOURCE_URL = "<base>"  # base URL of this product's files
+```
+
+Run it first, then later cells can read sibling files (the kernel keeps state
+across the session):
+
+```python
+import pandas as pd
+df = pd.read_parquet(f"{SOURCE_URL}/data.parquet")
+```
+
+This works for **public/unlisted** products only. **Restricted products are not
+supported** — the viewer is a cross-origin iframe with no `sc_proxy_creds`
+cookie, so credentialed/presigned URLs are a separate future design. Real
+sibling-file reads are verified manually (the unit tests cover only the AST
+assembly: that the `SOURCE_URL` cell is prepended with a unique key, and absent
+without `?base=`).
+
 ## Demos
 
 `public/demos/` has ready-to-run examples (served by `pnpm dev`/`pnpm preview`):

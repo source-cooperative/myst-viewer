@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { parseParams } from "./params";
 import { detectKind, fetchSource, SourceError } from "./source";
-import { parseMarkdown, parseNotebook } from "./parse";
+import { parseMarkdown, parseNotebook, withSourceUrl } from "./parse";
 import type { MystRoot } from "./parse";
 import { Article } from "./Article";
 import { ErrorPanel } from "./ErrorPanel";
@@ -21,10 +21,13 @@ function App() {
     (async () => {
       let text = "";
       try {
-        const { url, theme } = parseParams(window.location.search);
+        const { url, theme, base } = parseParams(window.location.search);
         text = await fetchSource(url);
-        const root =
+        const parsed =
           detectKind(url) === "ipynb" ? parseNotebook(text) : parseMarkdown(text);
+        // When embedded with ?base=, expose SOURCE_URL so code can read the
+        // product's sibling files (public/unlisted only). No-op without base.
+        const root = withSourceUrl(parsed, base);
         if (!cancelled) setState({ status: "loaded", root, theme });
       } catch (err) {
         if (cancelled) return;

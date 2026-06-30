@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseMarkdown, parseNotebook } from "./parse";
+import { parseMarkdown, parseNotebook, withSourceUrl } from "./parse";
 import { hasComputeCells } from "./Activate";
 import sampleMd from "./__fixtures__/sample.md?raw";
 import sampleIpynb from "./__fixtures__/sample.ipynb?raw";
@@ -106,5 +106,41 @@ describe("MyST {code-cell} markdown reconciliation", () => {
     expect(hasComputeCells((root as Node).children)).toBe(true);
     // prose-only documents are not flagged
     expect(hasComputeCells(parseMarkdown("# Hi\n\njust text").children as unknown)).toBe(false);
+  });
+});
+
+describe("withSourceUrl", () => {
+  const base = "https://data.source.coop/org/product";
+
+  it("prepends a runnable SOURCE_URL cell as the first child when base is set", () => {
+    const root = withSourceUrl(
+      parseMarkdown("# Doc\n\n```{code-cell} python\nprint(1)\n```"),
+      base,
+    );
+    const first = (root.children as Node[])[0];
+    expect(first.type).toBe("block");
+    expect(first.kind).toBe("notebook-code");
+    const code = first.children?.find((n) => n.type === "code");
+    expect(code?.executable).toBe(true);
+    expect(code?.value).toContain(`SOURCE_URL = "${base}"`);
+    // unique, non-empty key that doesn't collide with the other cell's block key
+    expect(typeof first.key).toBe("string");
+    expect((first.key ?? "").length).toBeGreaterThan(0);
+    const keys = findAll(root as Node, (n) => n.type === "block").map((b) => b.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("escapes a stray quote in base into a valid python literal", () => {
+    const root = withSourceUrl(parseMarkdown("# Doc"), 'https://x/a"b');
+    const code = find(root as Node, (n) => n.type === "code");
+    expect(code?.value).toContain('SOURCE_URL = "https://x/a\\"b"');
+  });
+
+  it("adds nothing when base is absent", () => {
+    const parsed = parseMarkdown("# Doc\n\n```{code-cell} python\nprint(1)\n```");
+    const before = JSON.stringify(parsed);
+    const after = withSourceUrl(parsed, undefined);
+    expect((after.children as Node[])[0].type).toBe("heading");
+    expect(JSON.stringify(after)).toBe(before);
   });
 });
