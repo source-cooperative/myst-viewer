@@ -1,83 +1,59 @@
 # myst-viewer
 
-A small SPA that fetches a MyST Markdown (`.md`) or Jupyter (`.ipynb`) document
-and renders it as a themed article. Code cells render **statically** by default;
-the reader can opt in to live, in-browser computation.
+A standalone Vite + React + TypeScript single-page app, deployed to GitHub
+Pages, that fetches a MyST Markdown (`.md`) or Jupyter (`.ipynb`) document and
+renders it as a themed article. Code cells render statically; the reader can opt
+in to live, in-browser computation (JupyterLite/Pyodide). source.coop embeds it
+as an iframe, matching its existing external-viewer convention
+(`https://source-cooperative.github.io/<viewer>/?iframe=true&url=<encoded object URL>`).
+
+## URL parameters
+
+The query string is the integration contract — keep it stable.
+
+| Param    | Required | Value                                                                 |
+| -------- | -------- | --------------------------------------------------------------------- |
+| `url`    | yes      | Encoded absolute URL of the `.md`/`.ipynb` object to render.          |
+| `iframe` | no       | `true` — convention flag marking an embedded view.                    |
+| `theme`  | no       | `light` (default) or `dark`.                                          |
+| `base`   | no       | Product base URL; when set, exposes `SOURCE_URL` to compute cells.    |
+
+The iframe `src` source.coop uses:
 
 ```
-pnpm install
-pnpm dev          # http://localhost:5173/myst-viewer/?url=<absolute-url-to-a-.md-or-.ipynb>
+https://source-cooperative.github.io/myst-viewer/?iframe=true&url=${encoded}&theme=${theme}
 ```
 
-The document to render is passed via `?url=`, e.g.
-`/myst-viewer/?url=http://localhost:5173/myst-viewer/demos/pandas-explore.ipynb`.
+where `encoded = encodeURIComponent(objectUrl)`.
 
-## Live computation (opt-in)
+## Host message contract
 
-Code cells are static (syntax-highlighted) until the reader clicks **Activate**.
-That boots an in-browser JupyterLite (Pyodide/WASM) kernel via `thebe-lite`;
-cells then become runnable and their outputs render inline. **WASM never boots on
-page load** — only on the explicit Activate click.
+The viewer measures its rendered height and posts it to the host so the iframe
+can be sized to fit (no nested scrollbar):
 
-### How it's wired
+```js
+window.parent.postMessage({ type: "myst-viewer:height", height }, "*");
+```
 
-- The kernel UI/runtime is `@myst-theme/jupyter` (the glue that makes MyST
-  `block[kind=notebook-code]` / `outputs` / `output` nodes executable) on top of
-  `thebe-react` + `thebe-core` + `thebe-lite`.
-- On Activate, `src/Activate.tsx` mounts the provider stack
-  `ThebeBundleLoaderProvider → ThebeServerProvider → BusyScopeProvider →
-  ExecuteScopeProvider`, and the article re-renders with
-  `mergeRenderers([DEFAULT_RENDERERS, JUPYTER_RENDERERS])`. A small auto-starter
-  waits for thebe-core + a connected JupyterLite server, then kicks the
-  build → session pipeline (`useExecutionScope().start`).
-- `thebe-core`/`thebe-lite` are large prebuilt bundles. `scripts/copy-thebe.mjs`
-  copies them into `public/thebe/` (gitignored, ~18MB) on `predev`/`prebuild`;
-  the loader injects `<script src="/myst-viewer/thebe/thebe-core.min.js">` at
-  runtime. The bundles and Pyodide are **not** part of the app JS bundle, so the
-  Pages deploy stays independent of the kernel.
+`height` is `document.documentElement.scrollHeight` in CSS pixels. It fires once
+after content renders and again on every resize (`ResizeObserver`). targetOrigin
+is `*` (height is non-sensitive).
 
-### Cross-origin isolation: NOT needed (verified)
+## Live compute (opt-in)
 
-Pyodide runs the kernel in a Web Worker and `thebe-lite` pulls Pyodide from a
-cross-origin CDN (`cdn.jsdelivr.net/pyodide/v0.27.0`). The intuitive assumption
-is that this needs cross-origin isolation (`crossOriginIsolated === true`, which
-gates `SharedArrayBuffer`). **It doesn't.** Measured on this stack:
+Code cells are static until the reader clicks **Activate** — nothing boots on
+load. Activate starts an in-browser JupyterLite/Pyodide kernel (via
+`thebe-lite`); cells then gain a Run button and outputs render inline.
 
-| Origin | `crossOriginIsolated` | `print(1+1)` |
-| --- | --- | --- |
-| header-less static server (Pages-like) | `false` | **works (~5s)** |
-| `vite preview` with COOP/COEP `credentialless` | `true` | works |
-| header-less + `coi-serviceworker` (forced isolation) | `true` | **hangs** |
+- numpy, pandas, and matplotlib are bundled in Pyodide. Other packages install
+  at runtime with `%pip install`.
+- Cells are run-only (Run + live outputs). Inline editing is a deferred
+  follow-up.
+- `input()` / synchronous stdin needs `SharedArrayBuffer` (isolation) and is out
+  of scope.
 
-So the JupyterLite/Pyodide kernel executes fine with **no** COOP/COEP. Forcing
-isolation is actively harmful here: thebe-lite then switches to a
-`SharedArrayBuffer` + service-worker comms path that needs its own
-`/service-worker.js`, which 404s under the `/myst-viewer/` base path and hangs.
-
-**Consequences:**
-
-- `vite.config.ts` sets **no** COOP/COEP headers — dev/preview behave exactly
-  like the header-less GitHub Pages deploy. No `coi-serviceworker` is used.
-- **GitHub Pages works as-is** — it serves header-less, which is the working
-  (non-isolated) path. Nothing extra to configure.
-
-`tests/compute-pages.spec.ts` is the deployment-representative proof: it serves
-the built site from a plain static server (`scripts/serve-dist.mjs`, no headers,
-mimicking Pages), asserts the page is **not** isolated, and still boots the
-kernel and runs `print(1 + 1) → 2`.
-
-Verified versions: `thebe-core`/`thebe-lite`/`thebe-react` `0.5.0`,
-`@myst-theme/jupyter` `1.3.1`, Pyodide `0.27.0`.
-
-> Note: `input()` and other synchronous-stdin features do need `SharedArrayBuffer`
-> (isolation) and a working JupyterLite service worker; those are out of scope
-> here. The boot surfaces a visible error + Retry after ~90s rather than hanging
-> if the kernel ever fails to start.
->
-> Known non-fatal warning: `thebe-lite` registers its own JupyterLite service
-> worker at the origin root (`/service-worker.js`), which 404s under the
-> `/myst-viewer/` base. That only disables filesystem/contents *sync* — code
-> execution falls back to in-memory and is unaffected.
+The kernel bundles and Pyodide load outside the app JS bundle (vendored by
+`scripts/copy-thebe.mjs`), so the Pages deploy stays independent of the kernel.
 
 ## Reading the product's own files
 
@@ -88,55 +64,69 @@ runnable code cell at the top of the article:
 SOURCE_URL = "<base>"  # base URL of this product's files
 ```
 
-Run it first, then later cells can read sibling files (the kernel keeps state
-across the session):
+Run it, then later cells can read sibling files (the kernel keeps state across
+the session):
 
 ```python
 import pandas as pd
 df = pd.read_parquet(f"{SOURCE_URL}/data.parquet")
 ```
 
-This works for **public/unlisted** products only. **Restricted products are not
-supported** — the viewer is a cross-origin iframe with no `sc_proxy_creds`
-cookie, so credentialed/presigned URLs are a separate future design. Real
-sibling-file reads are verified manually (the unit tests cover only the AST
-assembly: that the `SOURCE_URL` cell is prepended with a unique key, and absent
-without `?base=`).
+Public/unlisted products only. **Restricted products are not supported** — the
+viewer is a cross-origin iframe with no `sc_proxy_creds` cookie, so
+credentialed/presigned reads are a separate future design.
+
+## Cross-origin isolation: not needed, do not add
+
+The kernel runs header-less (`crossOriginIsolated === false`). Do **not** add
+COOP/COEP headers or `coi-serviceworker`. Forcing isolation breaks compute:
+thebe-lite then switches to a `SharedArrayBuffer` + service-worker path whose
+worker 404s under the `/myst-viewer/` base and hangs. GitHub Pages serves
+header-less — exactly the working path, nothing to configure.
+`tests/compute-pages.spec.ts` proves the kernel boots and runs `print(1 + 1)`
+on a non-isolated, Pages-like origin.
 
 ## Demos
 
-`public/demos/` has ready-to-run examples (served by `pnpm dev`/`pnpm preview`):
+`public/demos/` has ready-to-run examples (served by `pnpm dev`):
 
-| File | Type | Libraries |
-| --- | --- | --- |
-| `numpy-matplotlib.md` | MyST Markdown | numpy, matplotlib |
-| `pandas-explore.ipynb` | Jupyter | numpy, pandas (HTML tables) |
-| `xarray-dataset.ipynb` | Jupyter | xarray (via `%pip install`), numpy |
+| File                   | Type          | Libraries                  |
+| ---------------------- | ------------- | -------------------------- |
+| `numpy-matplotlib.md`  | MyST Markdown | numpy, matplotlib          |
+| `pandas-explore.ipynb` | Jupyter       | numpy, pandas              |
+| `xarray-dataset.ipynb` | Jupyter       | xarray (`%pip install`), numpy |
 
-View one (with the dev server running):
-
-```
-/myst-viewer/?url=http://localhost:5173/myst-viewer/demos/numpy-matplotlib.md
-```
-
-Click **Activate**, wait for "Python ready", then run the cells. (numpy/pandas/
-matplotlib ship with Pyodide; xarray is installed at runtime with `%pip install`.)
-
-## Tests
+With the dev server running:
 
 ```
-pnpm test     # vitest unit/component tests (src/), fast — no kernel boot
-pnpm e2e      # Playwright live-compute smoke (boots a real kernel); run pnpm build first
+http://localhost:5173/myst-viewer/?url=http://localhost:5173/myst-viewer/demos/numpy-matplotlib.md
 ```
 
-`pnpm e2e` is intentionally **separate** from `pnpm test` and the deploy
-workflow (a ~tens-of-MB Pyodide boot should not gate CI or Pages). Run
-`pnpm build` first, then `pnpm e2e`, which runs two specs:
+Click **Activate**, wait for the kernel, then Run the cells.
 
-- `compute.spec.ts` — against `pnpm preview`: Activate, wait for the kernel, run
-  a cell, assert the live `2`.
-- `compute-pages.spec.ts` — against a header-less static server
-  (`scripts/serve-dist.mjs`, mimicking Pages): asserts the page is **not**
-  cross-origin isolated and the kernel still boots/runs `print(1+1) → 2`.
+## Develop, test, deploy
 
-First run: `pnpm exec playwright install chromium`.
+```
+pnpm install
+pnpm dev      # http://localhost:5173/myst-viewer/?url=<absolute url to a .md or .ipynb>
+pnpm build    # vendors thebe via copy-thebe.mjs, then tsc -b && vite build
+pnpm test     # vitest unit/component tests (src/); runs in CI
+pnpm e2e      # Playwright live-compute smoke; boots a real kernel; NOT in CI
+```
+
+`copy-thebe.mjs` copies the thebe bundles into `public/thebe/` (gitignored,
+~18MB) and is chained into `dev`/`build`. `pnpm e2e` is kept out of CI because a
+cold Pyodide boot pulls tens of MB; run `pnpm build` first, then
+`pnpm exec playwright install chromium` once.
+
+Deploy is GitHub Pages on push to `main` via `.github/workflows/deploy.yml`
+(runs `pnpm test` + `pnpm build`, uploads `dist/`).
+
+## Out of scope / follow-ups
+
+- Inline cell editing (cells are run-only today).
+- Reading restricted-product data (needs credentialed/presigned access).
+- Static rendering of saved `.ipynb` outputs.
+- MyST projects: multi-page, cross-references, citations.
+- The source.coop-side iframe dispatch that points products at this viewer
+  (lives in the source.coop repo, not here).
