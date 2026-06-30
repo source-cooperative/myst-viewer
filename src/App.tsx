@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { parseParams } from "./params";
 import { detectKind, fetchSource } from "./source";
 import { parseMarkdown, parseNotebook } from "./parse";
+import type { MystRoot } from "./parse";
 import { Article } from "./Article";
 
-type MystRoot = ReturnType<typeof parseMarkdown>;
 type State =
   | { status: "loading" }
   | { status: "loaded"; root: MystRoot; theme: "light" | "dark" }

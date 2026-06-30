@@ -1,10 +1,6 @@
 import { MyST, DEFAULT_RENDERERS } from "myst-to-react";
 import { ThemeProvider, Theme } from "@myst-theme/providers";
-
-// ponytail: derive the root type from the parser itself (same pattern as
-// parse.ts) instead of pulling in `myst-common` just for `GenericParent`.
-import type { parseMarkdown } from "./parse";
-type MystRoot = ReturnType<typeof parseMarkdown>;
+import type { MystRoot } from "./parse";
 
 /**
  * Render a MyST AST as a themed, statically syntax-highlighted article.
@@ -26,9 +22,10 @@ export function Article({
       setTheme={() => {}}
       renderers={DEFAULT_RENDERERS}
     >
-      {/* ponytail: `dark` class + data-theme are the structural hooks the
-          myst-theme stylesheet keys off. Wiring the actual Tailwind-based
-          stylesheet is deferred — this gets a correct, theme-aware render. */}
+      {/* ponytail: myst-theme uses class-based (Tailwind) dark mode, so the
+          `.dark` class is the real styling hook; `data-theme` is just a stable
+          handle for tests/debugging. Wiring the Tailwind stylesheet is deferred
+          — this still gets a correct, theme-aware render. */}
       <article className={theme === "dark" ? "dark" : undefined} data-theme={theme}>
         <MyST ast={root.children} />
       </article>

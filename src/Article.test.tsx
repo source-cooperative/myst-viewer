@@ -13,9 +13,26 @@ describe("Article", () => {
 
   it("renders a code cell as static highlighted code", () => {
     const { container } = render(<Article root={root} theme="light" />);
-    // react-syntax-highlighter emits a <pre><code> for the code node.
+    // myst-to-react's CodeBlock emits a <pre><code> for the code node.
     expect(container.querySelector("code")).toBeTruthy();
     expect(container.textContent).toContain("print(1)");
+  });
+
+  it("unwraps directives so admonitions render (no Unknown Directive)", () => {
+    const directiveRoot = parseMarkdown(":::{note}\nhi there\n:::");
+    const { container } = render(<Article root={directiveRoot} theme="light" />);
+    expect(container.textContent).toContain("hi there");
+    // A real admonition is an <aside>; the unrendered-directive fallback isn't.
+    expect(container.querySelector("aside")).toBeTruthy();
+    expect(container.textContent).not.toContain("Unknown Directive");
+  });
+
+  it("unwraps {code-cell} directives into a real code block", () => {
+    const cellRoot = parseMarkdown("```{code-cell} python\nprint(1)\n```");
+    const { container } = render(<Article root={cellRoot} theme="light" />);
+    expect(container.querySelector("code")).toBeTruthy();
+    expect(container.textContent).toContain("print(1)");
+    expect(container.textContent).not.toContain("Unknown Directive");
   });
 
   it("applies the theme to the article wrapper", () => {

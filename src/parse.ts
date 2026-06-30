@@ -2,11 +2,40 @@ import { mystParse } from "myst-parser";
 
 // ponytail: derive the root type from the parser itself rather than adding a
 // direct dependency on `myst-common` just for the `GenericParent` type.
-type MystRoot = ReturnType<typeof mystParse>;
+export type MystRoot = ReturnType<typeof mystParse>;
 
-/** Parse MyST markdown text into a MyST AST root. */
+// Minimal node shape we need to walk; mirrors the GenericNode fields we touch.
+type AstNode = { type: string; children?: AstNode[] };
+
+/**
+ * `mystParse` leaves directives/roles as `mystDirective`/`mystRole` WRAPPER
+ * nodes whose real content (an `admonition`, a `block > code`, …) sits in
+ * `.children`. The full MyST pipeline runs transforms that lift these; we don't
+ * pull those in (myst-transforms is transitive-only), so without this the
+ * renderer matches `mystDirective` and shows a red "Unknown Directive" box.
+ *
+ * This unwrap replaces every directive/role node with its (recursively
+ * unwrapped) children, so nested directives lift too and the AST is
+ * render-ready. ponytail: ~a dozen lines beats a myst-transforms dependency.
+ */
+function unwrapDirectives(nodes: AstNode[]): AstNode[] {
+  const out: AstNode[] = [];
+  for (const node of nodes) {
+    const children = node.children ? unwrapDirectives(node.children) : undefined;
+    if (node.type === "mystDirective" || node.type === "mystRole") {
+      if (children) out.push(...children);
+    } else {
+      out.push(children ? { ...node, children } : node);
+    }
+  }
+  return out;
+}
+
+/** Parse MyST markdown text into a render-ready MyST AST root. */
 export function parseMarkdown(text: string): MystRoot {
-  return mystParse(text);
+  const root = mystParse(text);
+  const children = unwrapDirectives(root.children as AstNode[]);
+  return { ...root, children: children as MystRoot["children"] };
 }
 
 /**
