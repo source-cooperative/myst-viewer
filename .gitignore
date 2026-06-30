@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Vendored thebe-core / thebe-lite bundles, copied in by scripts/copy-thebe.mjs
+# (predev / prebuild). ~18MB of build artifacts we never edit by hand.
+public/thebe
+
+# Playwright e2e
+/test-results
+/playwright-report
+/.playwright
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,0 +1,33 @@
+import { defineConfig, devices } from "@playwright/test";
+
+// Standalone e2e config for the live-compute smoke test. Intentionally NOT
+// wired into `pnpm test` or deploy.yml — booting JupyterLite/Pyodide pulls tens
+// of MB and takes ~tens of seconds, so this stays a separate, on-demand check
+// (`pnpm e2e`). Build first (`pnpm build`) so `pnpm preview` has a dist to serve.
+export default defineConfig({
+  testDir: "./tests",
+  fullyParallel: false,
+  workers: 1,
+  // Booting the in-browser kernel can take a while on a cold Pyodide download.
+  timeout: 180_000,
+  expect: { timeout: 120_000 },
+  reporter: [["list"]],
+  use: {
+    baseURL: "http://localhost:4173",
+    trace: "retain-on-failure",
+  },
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
+  webServer: {
+    // Preview applies the COOP/COEP headers from vite.config.ts that Pyodide
+    // needs for cross-origin isolation.
+    command: "pnpm preview --port 4173 --strictPort",
+    url: "http://localhost:4173/myst-viewer/",
+    reuseExistingServer: true,
+    timeout: 120_000,
+  },
+});

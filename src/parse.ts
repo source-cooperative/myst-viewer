@@ -5,7 +5,18 @@ import { mystParse } from "myst-parser";
 export type MystRoot = ReturnType<typeof mystParse>;
 
 // Minimal node shape we need to walk; mirrors the GenericNode fields we touch.
-type AstNode = { type: string; children?: AstNode[] };
+type AstNode = {
+  type: string;
+  children?: AstNode[];
+  key?: string;
+  id?: string;
+  // code-cell / output carriers
+  lang?: string;
+  value?: string;
+  executable?: boolean;
+  kind?: string;
+  jupyter_data?: unknown;
+};
 
 /**
  * `mystParse` leaves directives/roles as `mystDirective`/`mystRole` WRAPPER
@@ -31,17 +42,51 @@ function unwrapDirectives(nodes: AstNode[]): AstNode[] {
   return out;
 }
 
+// Live computation (@myst-theme/jupyter) keys each executable cell off the
+// `block.key` of its `block[kind=notebook-code]` and the `id`/`key` of the
+// cell's `outputs` node (see `notebookFromMdast` in @myst-theme/jupyter). The
+// full MyST pipeline assigns these via a transform we don't run, so we assign
+// our own stable, unique keys here. Without them multiple cells would collide
+// on `undefined` and execute/route outputs to the wrong cell.
+let keyCounter = 0;
+function ensureKeys(nodes: AstNode[]): void {
+  for (const node of nodes) {
+    if (node.type === "block" && node.key == null) node.key = `mv-${++keyCounter}`;
+    if (node.type === "outputs" && node.id == null && node.key == null) {
+      node.id = `mv-out-${++keyCounter}`;
+    }
+    if (node.children) ensureKeys(node.children);
+  }
+}
+
 /** Parse MyST markdown text into a render-ready MyST AST root. */
 export function parseMarkdown(text: string): MystRoot {
   const root = mystParse(text);
   const children = unwrapDirectives(root.children as AstNode[]);
+  ensureKeys(children);
   return { ...root, children: children as MystRoot["children"] };
 }
 
 /**
- * Parse Jupyter `.ipynb` JSON into a MyST AST root: markdown cells are parsed
- * with `parseMarkdown`, code cells become a `code` node plus an `output` node
- * carrying any saved nbformat outputs verbatim (a later task renders them).
+ * Parse Jupyter `.ipynb` JSON into a MyST AST root.
+ *
+ * Output reconciliation: rather than the bespoke `{type:'output', data}` node
+ * this used to emit, each code cell is reconciled to the SAME MyST-native shape
+ * that `.md` `{code-cell}` directives produce —
+ *
+ *   block[kind=notebook-code] > [ code{executable}, outputs > output[] ]
+ *
+ * — so both `.md` code-cells and `.ipynb` saved outputs render through the one
+ * `@myst-theme/jupyter` path (`NotebookBlock` + `Outputs`/`Output`). Each saved
+ * nbformat output is carried verbatim on `output.jupyter_data`, which is the
+ * field `@myst-theme/jupyter`'s `Output` reads.
+ *
+ * ponytail: STATIC rendering of saved outputs (before Activate) is deferred —
+ * the `outputs`/`output` renderers require an `ExecuteScopeProvider`, which we
+ * only mount on Activate, so before then saved outputs render as nothing (never
+ * "Unknown"). After Activate the kernel re-renders outputs live on run. Full
+ * static saved-output rendering would mean mounting the execute scope passively
+ * on load; out of scope for the opt-in MVP.
  */
 export function parseNotebook(text: string): MystRoot {
   const nb = JSON.parse(text);
@@ -50,17 +95,26 @@ export function parseNotebook(text: string): MystRoot {
     nb.metadata?.kernelspec?.language ??
     "python";
 
-  const children: MystRoot["children"] = [];
+  const children: AstNode[] = [];
   for (const cell of nb.cells ?? []) {
     const source = Array.isArray(cell.source) ? cell.source.join("") : cell.source ?? "";
     if (cell.cell_type === "markdown") {
-      children.push(...parseMarkdown(source).children);
+      children.push(...(parseMarkdown(source).children as AstNode[]));
     } else if (cell.cell_type === "code") {
-      children.push({ type: "code", lang, value: source });
-      if (cell.outputs?.length) {
-        children.push({ type: "output", data: cell.outputs });
-      }
+      const outputNodes: AstNode[] = (cell.outputs ?? []).map((output: unknown) => ({
+        type: "output",
+        jupyter_data: output,
+      }));
+      children.push({
+        type: "block",
+        kind: "notebook-code",
+        children: [
+          { type: "code", lang, executable: true, value: source },
+          { type: "outputs", children: outputNodes },
+        ],
+      });
     }
   }
-  return { type: "root", children };
+  ensureKeys(children);
+  return { type: "root", children: children as MystRoot["children"] };
 }

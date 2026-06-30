@@ -5,6 +5,9 @@ import sampleIpynb from "./__fixtures__/sample.ipynb?raw";
 
 interface Node {
   type: string;
+  kind?: string;
+  value?: string;
+  jupyter_data?: unknown;
   children?: Node[];
 }
 
@@ -12,6 +15,15 @@ function collectTypes(node: Node, acc: string[] = []): string[] {
   acc.push(node.type);
   for (const child of node.children ?? []) collectTypes(child, acc);
   return acc;
+}
+
+function find(node: Node, pred: (n: Node) => boolean): Node | undefined {
+  if (pred(node)) return node;
+  for (const child of node.children ?? []) {
+    const hit = find(child, pred);
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 describe("parseMarkdown", () => {
@@ -35,16 +47,19 @@ describe("parseNotebook", () => {
     expect(collectTypes(root)).toContain("heading");
   });
 
-  it("turns code cells into a code node carrying the source", () => {
-    expect(collectTypes(root)).toContain("code");
-    const code = (root.children as Array<{ type: string; value?: string }>).find(
-      (n) => n.type === "code",
-    );
+  it("reconciles code cells into a notebook-code block with a code node", () => {
+    const block = find(root as Node, (n) => n.type === "block" && n.kind === "notebook-code");
+    expect(block).toBeDefined();
+    const code = block?.children?.find((n) => n.type === "code");
     expect(code?.value).toContain('print("hi")');
   });
 
-  it("retains saved cell outputs in an output node", () => {
-    expect(collectTypes(root)).toContain("output");
-    expect(JSON.stringify(root)).toContain("hi");
+  it("reconciles saved outputs into outputs > output[jupyter_data]", () => {
+    const types = collectTypes(root);
+    expect(types).toContain("outputs");
+    expect(types).toContain("output");
+    const output = find(root as Node, (n) => n.type === "output");
+    // saved nbformat output is carried verbatim on jupyter_data
+    expect(JSON.stringify(output?.jupyter_data)).toContain("hi");
   });
 });
