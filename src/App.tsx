@@ -4,11 +4,13 @@ import { detectKind, fetchSource, SourceError } from "./source";
 import { parseMarkdown, parseNotebook, withSourceUrl } from "./parse";
 import type { MystRoot } from "./parse";
 import { Article } from "./Article";
+import { Home } from "./Home";
 import { ErrorPanel } from "./ErrorPanel";
 import { observeHeight, postHeight } from "./iframeBridge";
 
 type State =
   | { status: "loading" }
+  | { status: "home"; theme: "light" | "dark" } // no ?url= → landing page
   | { status: "loaded"; root: MystRoot; theme: "light" | "dark" }
   | { status: "error"; kind: SourceError["kind"] } // friendly panel
   | { status: "raw"; text: string }; // fetched, but couldn't render
@@ -18,6 +20,13 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    // No ?url= → show the homepage instead of erroring. parseParams would throw
+    // without a url, so read theme directly here.
+    const q = new URLSearchParams(window.location.search);
+    if (!q.get("url")) {
+      setState({ status: "home", theme: q.get("theme") === "dark" ? "dark" : "light" });
+      return;
+    }
     (async () => {
       let text = "";
       try {
@@ -53,6 +62,7 @@ function App() {
   }, [state.status]);
 
   if (state.status === "loading") return <>loading…</>;
+  if (state.status === "home") return <Home theme={state.theme} />;
   if (state.status === "error") return <ErrorPanel kind={state.kind} />;
   if (state.status === "raw")
     return (

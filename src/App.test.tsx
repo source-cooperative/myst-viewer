@@ -28,6 +28,8 @@ const parseMock = vi.mocked(parseMarkdown);
 beforeEach(() => {
   fetchMock.mockReset();
   parseMock.mockReset();
+  // Default to a url present so the no-url home branch is skipped.
+  window.history.replaceState({}, "", "/?url=https://example.com/a.md");
 });
 
 describe("App error handling", () => {
@@ -58,5 +60,18 @@ describe("App error handling", () => {
     expect(pre.textContent).toContain(raw);
     // An error banner explains the fallback; content is never blank.
     expect(document.body.textContent).toMatch(/raw source/i);
+  });
+
+  it("renders the homepage with demo links when no ?url= is provided", async () => {
+    window.history.replaceState({}, "", "/");
+    render(<App />);
+
+    const link = await screen.findByRole("link", {
+      name: /numpy \+ matplotlib/i,
+    });
+    // href points back into the viewer with the demo file URL-encoded into ?url=
+    // and the current theme carried along.
+    expect(link.getAttribute("href")).toContain("demos%2Fnumpy-matplotlib.md");
+    expect(link.getAttribute("href")).toContain("theme=light");
   });
 });
