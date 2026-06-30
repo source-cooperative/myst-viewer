@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { parseParams } from "./params";
-import { detectKind, fetchSource } from "./source";
+import { detectKind, fetchSource, SourceError } from "./source";
 import { parseMarkdown, parseNotebook } from "./parse";
 import type { MystRoot } from "./parse";
 import { Article } from "./Article";
+import { ErrorPanel } from "./ErrorPanel";
+import { observeHeight, postHeight } from "./iframeBridge";
 
 type State =
   | { status: "loading" }
   | { status: "loaded"; root: MystRoot; theme: "light" | "dark" }
-  | { status: "error"; message: string };
+  | { status: "error"; kind: SourceError["kind"] } // friendly panel
+  | { status: "raw"; text: string }; // fetched, but couldn't render
 
 function App() {
   const [state, setState] = useState<State>({ status: "loading" });
@@ -16,15 +19,18 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      let text = "";
       try {
         const { url, theme } = parseParams(window.location.search);
-        const text = await fetchSource(url);
+        text = await fetchSource(url);
         const root =
           detectKind(url) === "ipynb" ? parseNotebook(text) : parseMarkdown(text);
         if (!cancelled) setState({ status: "loaded", root, theme });
       } catch (err) {
-        // ponytail: minimal inline error for now; friendly error UI is a later task.
-        if (!cancelled) setState({ status: "error", message: String(err) });
+        if (cancelled) return;
+        if (err instanceof SourceError) setState({ status: "error", kind: err.kind });
+        else if (text) setState({ status: "raw", text }); // parse/other failure → show source
+        else setState({ status: "error", kind: "network" }); // failed before any text
       }
     })();
     return () => {
@@ -32,8 +38,26 @@ function App() {
     };
   }, []);
 
+  // Task 9: tell the host iframe how tall the content is, so it can size the
+  // frame to fit (no nested scrollbar). Observe once content has rendered.
+  // ponytail: live two-way theme sync is out of scope; the initial ?theme= is
+  // already handled by parseParams/Article.
+  useEffect(() => {
+    if (state.status === "loading") return;
+    const el = document.documentElement;
+    postHeight(el.scrollHeight); // once on mount
+    return observeHeight(el, postHeight);
+  }, [state.status]);
+
   if (state.status === "loading") return <>loading…</>;
-  if (state.status === "error") return <>{state.message}</>;
+  if (state.status === "error") return <ErrorPanel kind={state.kind} />;
+  if (state.status === "raw")
+    return (
+      <>
+        <p role="alert">Couldn't render this file — showing the raw source below.</p>
+        <pre>{state.text}</pre>
+      </>
+    );
   return <Article root={state.root} theme={state.theme} />;
 }
 
