@@ -6,6 +6,8 @@ const DEMOS = [
   { file: "numpy-matplotlib.md", label: "NumPy + Matplotlib (MyST .md)" },
   { file: "pandas-explore.ipynb", label: "pandas DataFrames (.ipynb)" },
   { file: "xarray-dataset.ipynb", label: "xarray Dataset (.ipynb, %pip install)" },
+  { file: "mrms-latest-hour.md", label: "NOAA MRMS latest-hour rainfall from source.coop (MyST .md, zarr)" },
+  { file: "mrms-latest-hour.ipynb", label: "NOAA MRMS latest-hour rainfall from source.coop (.ipynb, zarr)" },
 ];
 
 /**
