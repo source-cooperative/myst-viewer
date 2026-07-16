@@ -43,3 +43,29 @@ test("kernel boots and runs on a header-less (Pages-like) origin without isolati
     timeout: 60_000,
   });
 });
+
+// ipywidgets end-to-end: the notebook imports ipywidgets without installing it
+// (the common case — Colab/local notebooks never %pip install it). The viewer
+// detects the import, piplite-installs ipywidgets into the Pyodide kernel
+// before reporting ready, and thebe-core's bundled widget manager renders the
+// live widget on run.
+test("ipywidgets are auto-installed and render as live widgets", async ({ page }) => {
+  // ?run=true is the risky path: autorun must wait for the install, or the
+  // import fails before pip finishes.
+  const fixture = `${ORIGIN}/myst-viewer/__e2e__/widgets.ipynb`;
+  await page.goto(`${APP}?url=${encodeURIComponent(fixture)}&run=true`);
+
+  await expect(page.getByText("Widget smoke test")).toBeVisible();
+
+  // "ready" now includes the ipywidgets install, so a plain import must work.
+  await expect(page.locator('[data-compute-status="ready"]')).toBeVisible({
+    timeout: 150_000,
+  });
+
+  // A real ipywidgets 8 slider, not the text/plain repr or the thebe
+  // "kernel connection is required" placeholder.
+  const slider = page.locator(".jupyter-widgets.widget-slider");
+  await expect(slider).toBeVisible({ timeout: 60_000 });
+  await expect(slider).toContainText("amount");
+  await expect(page.locator(".thebe-ipywidgets-placeholder")).toHaveCount(0);
+});

@@ -54,6 +54,24 @@ export function hasComputeCells(nodes: unknown): boolean {
 }
 
 /**
+ * True if any code in the AST mentions ipywidgets. The widget FRONTEND
+ * (ipywidgets 8 manager, jsDelivr loading for custom widgets like anywidget)
+ * ships inside thebe-core and is wired up automatically on session attach —
+ * but the Pyodide kernel has no Python-side `ipywidgets` package, so without
+ * an install `import ipywidgets` is a ModuleNotFoundError. A word-boundary
+ * match over code text can over-trigger on prose-y code blocks; the cost is
+ * one redundant ~200kB pip no-op, so precision doesn't matter.
+ */
+export function usesIpywidgets(nodes: unknown): boolean {
+  if (!Array.isArray(nodes)) return false;
+  for (const node of nodes as Array<{ type?: string; value?: string; children?: unknown }>) {
+    if (node?.type === "code" && /\bipywidgets\b/.test(node.value ?? "")) return true;
+    if (usesIpywidgets(node?.children)) return true;
+  }
+  return false;
+}
+
+/**
  * The Activate button. Rendered before compute is switched on; clicking it
  * mounts the thebe-lite provider stack (which boots the kernel). We never boot
  * WASM on load — only here, on an explicit click.
@@ -100,15 +118,19 @@ const BOOT_TIMEOUT_MS = 90_000;
  * - If the session never attaches within BOOT_TIMEOUT_MS, surfaces a visible
  *   error + Retry instead of hanging.
  */
-function ComputeStatus({ autorun }: { autorun: boolean }) {
+function ComputeStatus({ autorun, needsWidgets }: { autorun: boolean; needsWidgets: boolean }) {
   const { start, execute, state } = useExecutionScope();
   const { core } = useThebeLoader();
   const { ready: serverReady, error } = useThebeServer();
-  const sessionReady = !!state.pages[SLUG]?.scopes[SLUG]?.session;
+  const session = state.pages[SLUG]?.scopes[SLUG]?.session;
+  const sessionReady = !!session;
   const [attempt, setAttempt] = useState(0);
   const [timedOut, setTimedOut] = useState(false);
+  const [depsReady, setDepsReady] = useState(!needsWidgets);
   const startedAttempt = useRef(-1);
+  const installedAttempt = useRef(-1);
   const ranAuto = useRef(false);
+  const ready = sessionReady && depsReady;
 
   // Start once per attempt, when core + server are ready.
   useEffect(() => {
@@ -118,29 +140,51 @@ function ComputeStatus({ autorun }: { autorun: boolean }) {
     start(SLUG);
   }, [core, serverReady, start, attempt]);
 
-  // Boot deadline, (re)armed on activation/retry; cleared once the session attaches.
+  // The kernel ships no Python-side ipywidgets — install it (piplite, pure
+  // wheel from PyPI) before declaring ready so imports and autorun succeed.
+  // Install failures are swallowed: the notebook's own import error is the
+  // clearer signal, and blocking every non-widget cell on it helps nobody.
   useEffect(() => {
-    if (sessionReady) return;
+    if (!needsWidgets || !session) return;
+    if (installedAttempt.current === attempt) return;
+    installedAttempt.current = attempt;
+    const request = session.kernel?.requestExecute({
+      code: "%pip install -q ipywidgets",
+      stop_on_error: false,
+    });
+    if (!request) {
+      setDepsReady(true);
+      return;
+    }
+    request.done.catch(() => {}).finally(() => setDepsReady(true));
+  }, [needsWidgets, session, attempt]);
+
+  // Boot deadline, (re)armed on activation/retry; cleared once the session
+  // attaches AND dependencies are in — a stalled PyPI fetch fails loudly too.
+  useEffect(() => {
+    if (ready) return;
     const t = setTimeout(() => setTimedOut(true), BOOT_TIMEOUT_MS);
     return () => clearTimeout(t);
-  }, [sessionReady, attempt]);
+  }, [ready, attempt]);
 
-  // ?run=true: execute every cell once, as soon as the session attaches.
+  // ?run=true: execute every cell once, as soon as the kernel is fully ready.
   useEffect(() => {
-    if (!autorun || !sessionReady || ranAuto.current) return;
+    if (!autorun || !ready || ranAuto.current) return;
     ranAuto.current = true;
     execute(SLUG);
-  }, [autorun, sessionReady, execute]);
+  }, [autorun, ready, execute]);
 
   const retry = () => {
     setTimedOut(false);
+    setDepsReady(!needsWidgets);
     setAttempt((a) => a + 1);
   };
 
-  const failed = !sessionReady && (timedOut || !!error);
-  const status = sessionReady ? "ready" : failed ? "error" : "starting";
+  const failed = !ready && (timedOut || !!error);
+  const status = ready ? "ready" : failed ? "error" : "starting";
   let message: string;
-  if (sessionReady) message = "Python ready — run the cells below.";
+  if (ready) message = "Python ready — run the cells below.";
+  else if (sessionReady && !failed) message = "Installing ipywidgets in the kernel…";
   else if (timedOut)
     message =
       "Python didn’t start in time — the kernel download may have stalled or this " +
@@ -156,7 +200,7 @@ function ComputeStatus({ autorun }: { autorun: boolean }) {
         margin: "1rem 0",
         padding: "0.5rem 0.75rem",
         borderRadius: "0.375rem",
-        background: failed ? "#fee2e2" : sessionReady ? "#dcfce7" : "#fef9c3",
+        background: failed ? "#fee2e2" : ready ? "#dcfce7" : "#fef9c3",
         color: "#1f2937",
         fontSize: "0.95rem",
       }}
@@ -202,12 +246,13 @@ export function ComputeProviders({
     () => ({ slug: SLUG, kind: SourceFileKind.Notebook, mdast: root as never }),
     [root],
   );
+  const needsWidgets = useMemo(() => usesIpywidgets(root.children), [root]);
   return (
     <ThebeBundleLoaderProvider loadThebeLite publicPath={THEBE_PUBLIC_PATH}>
       <ThebeServerProvider connect useJupyterLite options={THEBE_OPTIONS}>
         <BusyScopeProvider>
           <ExecuteScopeProvider enable contents={contents}>
-            <ComputeStatus autorun={autorun} />
+            <ComputeStatus autorun={autorun} needsWidgets={needsWidgets} />
             {children}
           </ExecuteScopeProvider>
         </BusyScopeProvider>

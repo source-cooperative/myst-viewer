@@ -74,6 +74,11 @@ load. Activate starts an in-browser JupyterLite/Pyodide kernel (via
 
 - numpy, pandas, and matplotlib are bundled in Pyodide. Other packages install
   at runtime with `%pip install`.
+- ipywidgets render live: the widget frontend ships with `thebe-core`, and if a
+  document's code mentions `ipywidgets` the viewer pip-installs it into the
+  kernel before reporting ready (most notebooks never install it themselves).
+  Custom widgets (anywidget, lonboard, …) load their JS from jsDelivr. Saved
+  widget outputs can't be rehydrated statically — widgets need a live run.
 - Cells are run-only (Run + live outputs). Inline editing is a deferred
   follow-up.
 - `input()` / synchronous stdin needs `SharedArrayBuffer` (isolation) and is out
