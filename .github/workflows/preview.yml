@@ -1,0 +1,73 @@
+name: PR Preview (Cloudflare Pages)
+
+on:
+  pull_request:
+
+# One preview deploy per PR; new pushes cancel in-flight ones.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    # Fork PRs can't read the Cloudflare secrets.
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      # The build targets the /myst-viewer/ base (GitHub Pages), so serve it
+      # from the same subpath on Pages instead of rebuilding with a root base.
+      - run: |
+          mkdir _site
+          mv dist _site/myst-viewer
+          echo "/ /myst-viewer/ 302" > _site/_redirects
+
+      - name: Deploy to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy _site --project-name=myst-viewer --branch=${{ github.head_ref }}
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = "<!-- cf-pages-preview -->";
+            const url = "${{ steps.deploy.outputs.deployment-url }}/myst-viewer/";
+            const alias = "${{ steps.deploy.outputs.pages-deployment-alias-url }}/myst-viewer/";
+            const body = [
+              marker,
+              "### Cloudflare Pages preview",
+              `| Latest commit | Branch alias |`,
+              `| --- | --- |`,
+              `| ${url} | ${alias} |`,
+            ].join("\n");
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
