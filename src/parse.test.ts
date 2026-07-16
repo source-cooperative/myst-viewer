@@ -137,23 +137,25 @@ describe("MyST {code-cell} markdown reconciliation", () => {
 });
 
 describe("cell-tag visibility (remove-input / hide-output / …)", () => {
-  it("maps {code-cell} :tags: onto visibility in .md", () => {
+  it("maps {code-cell} :tags: onto visibility in .md (remove-* demoted to hide)", () => {
     const root = parseMarkdown(
       "```{code-cell} python\n:tags: [remove-input, hide-output]\nprint(1)\n```",
     ) as Node;
     const block = find(root, (n) => n.type === "block" && n.kind === "notebook-code")!;
-    expect(block.children?.find((n) => n.type === "code")?.visibility).toBe("remove");
+    // remove-* never yields visibility:"remove" — executable code must stay
+    // inspectable, so it demotes to the collapsed-disclosure "hide"
+    expect(block.children?.find((n) => n.type === "code")?.visibility).toBe("hide");
     expect(block.children?.find((n) => n.type === "outputs")?.visibility).toBe("hide");
     expect(block.visibility).toBeUndefined();
     // still executable — hiding the input must not stop the cell from running
     expect(block.children?.find((n) => n.type === "code")?.executable).toBe(true);
   });
 
-  it("maps cell.metadata.tags onto visibility in .ipynb", () => {
+  it("maps cell.metadata.tags onto visibility in .ipynb (remove-* demoted to hide)", () => {
     const ipynb = JSON.stringify({
       cells: [
         { cell_type: "code", source: ["a = 1\n"], outputs: [], metadata: { tags: ["remove-input"] } },
-        { cell_type: "code", source: ["b = 2\n"], outputs: [], metadata: { tags: ["hide-cell"] } },
+        { cell_type: "code", source: ["b = 2\n"], outputs: [], metadata: { tags: ["remove-cell"] } },
         { cell_type: "code", source: ["c = 3\n"], outputs: [], metadata: {} },
       ],
       metadata: { language_info: { name: "python" } },
@@ -161,10 +163,18 @@ describe("cell-tag visibility (remove-input / hide-output / …)", () => {
       nbformat_minor: 5,
     });
     const blocks = findAll(parseNotebook(ipynb) as Node, (n) => n.type === "block");
-    expect(blocks[0].children?.find((n) => n.type === "code")?.visibility).toBe("remove");
+    expect(blocks[0].children?.find((n) => n.type === "code")?.visibility).toBe("hide");
     expect(blocks[1].visibility).toBe("hide");
     expect(blocks[2].visibility).toBeUndefined();
     expect(blocks[2].children?.find((n) => n.type === "code")?.visibility).toBeUndefined();
+  });
+
+  it("never emits visibility:'remove' for any remove-* tag", () => {
+    const root = parseMarkdown(
+      "```{code-cell} python\n:tags: [remove-cell, remove-input, remove-output]\nx = 1\n```",
+    ) as Node;
+    expect(findAll(root, (n) => n.visibility === "remove")).toHaveLength(0);
+    expect(findAll(root, (n) => n.visibility === "hide").length).toBeGreaterThan(0);
   });
 });
 

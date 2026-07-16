@@ -23,18 +23,22 @@ type AstNode = {
 /**
  * Map the standard Jupyter/MyST cell tags (`remove-input`, `hide-output`, …)
  * onto the `visibility` field that `myst-to-react` / `@myst-theme/jupyter`
- * already honor: `remove-*` hides the part entirely, `hide-*` renders it as a
- * collapsed disclosure. Execution is unaffected — `notebookFromMdast` collects
- * cells regardless of visibility, so hidden code still runs. The full MyST
- * pipeline does this in a myst-cli transform we don't run.
+ * already honor. Execution is unaffected — `notebookFromMdast` collects cells
+ * regardless of visibility, so hidden code still runs. The full MyST pipeline
+ * does this in a myst-cli transform we don't run.
+ *
+ * `remove-*` is deliberately DEMOTED to `hide-*` (a collapsed disclosure, not
+ * `visibility: "remove"`): hidden cells still execute on Activate/`?run`, and
+ * readers must always be able to inspect code before running it — never
+ * fully-invisible executable code.
  */
 function applyCellTags(block: AstNode): void {
   const tags = block.data?.tags;
   if (!tags?.length) return;
   const set = (node: AstNode | undefined, part: string) => {
     if (!node) return;
-    if (tags.includes(`remove-${part}`)) node.visibility = "remove";
-    else if (tags.includes(`hide-${part}`)) node.visibility = "hide";
+    if (tags.includes(`remove-${part}`) || tags.includes(`hide-${part}`))
+      node.visibility = "hide";
   };
   set(block, "cell");
   set(block.children?.find((n) => n.type === "code"), "input");
