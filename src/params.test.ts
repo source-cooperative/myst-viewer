@@ -1,8 +1,13 @@
-import { describe, it, expect } from "vitest";
-import { parseParams } from "./params";
+import { describe, it, expect, vi } from "vitest";
+import { parseParams, resolveTheme } from "./params";
+
+function mockScheme(dark: boolean) {
+  vi.stubGlobal("matchMedia", (query: string) => ({ matches: dark, media: query }));
+}
 
 describe("parseParams", () => {
-  it("extracts url, theme, base; defaults theme to light", () => {
+  it("extracts url, theme, base", () => {
+    mockScheme(false);
     const p = parseParams("?iframe=true&url=https%3A%2F%2Fx%2Fa.md&base=https%3A%2F%2Fx");
     expect(p.url).toBe("https://x/a.md");
     expect(p.theme).toBe("light");
@@ -10,6 +15,18 @@ describe("parseParams", () => {
   });
   it("reads dark theme", () => {
     expect(parseParams("?url=https%3A%2F%2Fx%2Fa.md&theme=dark").theme).toBe("dark");
+  });
+  it("follows the browser preference when ?theme= is absent", () => {
+    mockScheme(true);
+    expect(parseParams("?url=https%3A%2F%2Fx%2Fa.md").theme).toBe("dark");
+    mockScheme(false);
+    expect(parseParams("?url=https%3A%2F%2Fx%2Fa.md").theme).toBe("light");
+  });
+  it("explicit ?theme= overrides the browser preference", () => {
+    mockScheme(true);
+    expect(resolveTheme("light")).toBe("light");
+    mockScheme(false);
+    expect(resolveTheme("dark")).toBe("dark");
   });
   it("throws a typed error when url is missing", () => {
     expect(() => parseParams("?iframe=true")).toThrow(/missing.*url/i);

@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 // Fixed params so the effect always reaches fetchSource with a .md url.
 vi.mock("./params", () => ({
   parseParams: () => ({ url: "https://example.com/a.md", theme: "light" }),
+  resolveTheme: () => "light",
 }));
 
 // Keep detectKind + SourceError real; make only fetchSource controllable.
