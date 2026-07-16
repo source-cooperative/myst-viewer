@@ -49,6 +49,13 @@
   display: none;
 }
 
+/* myst-to-react's <Details> adds its own chevron icon inside <summary>
+   (Tailwind would float/rotate it); without Tailwind it sits next to the
+   native details triangle. Keep the native marker, drop the icon. */
+.myst-article summary .details-toggle {
+  display: none;
+}
+
 /* --- Headings (Radix Heading scale) ---------------------------------------- */
 .myst-article :where(h1, h2, h3, h4, h5, h6) {
   font-family: var(--heading-font-family);
