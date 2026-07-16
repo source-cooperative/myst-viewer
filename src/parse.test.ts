@@ -11,6 +11,7 @@ interface Node {
   value?: string;
   executable?: boolean;
   jupyter_data?: unknown;
+  visibility?: string;
   children?: Node[];
 }
 
@@ -132,6 +133,38 @@ describe("MyST {code-cell} markdown reconciliation", () => {
     expect(hasComputeCells((root as Node).children)).toBe(true);
     // prose-only documents are not flagged
     expect(hasComputeCells(parseMarkdown("# Hi\n\njust text").children as unknown)).toBe(false);
+  });
+});
+
+describe("cell-tag visibility (remove-input / hide-output / …)", () => {
+  it("maps {code-cell} :tags: onto visibility in .md", () => {
+    const root = parseMarkdown(
+      "```{code-cell} python\n:tags: [remove-input, hide-output]\nprint(1)\n```",
+    ) as Node;
+    const block = find(root, (n) => n.type === "block" && n.kind === "notebook-code")!;
+    expect(block.children?.find((n) => n.type === "code")?.visibility).toBe("remove");
+    expect(block.children?.find((n) => n.type === "outputs")?.visibility).toBe("hide");
+    expect(block.visibility).toBeUndefined();
+    // still executable — hiding the input must not stop the cell from running
+    expect(block.children?.find((n) => n.type === "code")?.executable).toBe(true);
+  });
+
+  it("maps cell.metadata.tags onto visibility in .ipynb", () => {
+    const ipynb = JSON.stringify({
+      cells: [
+        { cell_type: "code", source: ["a = 1\n"], outputs: [], metadata: { tags: ["remove-input"] } },
+        { cell_type: "code", source: ["b = 2\n"], outputs: [], metadata: { tags: ["hide-cell"] } },
+        { cell_type: "code", source: ["c = 3\n"], outputs: [], metadata: {} },
+      ],
+      metadata: { language_info: { name: "python" } },
+      nbformat: 4,
+      nbformat_minor: 5,
+    });
+    const blocks = findAll(parseNotebook(ipynb) as Node, (n) => n.type === "block");
+    expect(blocks[0].children?.find((n) => n.type === "code")?.visibility).toBe("remove");
+    expect(blocks[1].visibility).toBe("hide");
+    expect(blocks[2].visibility).toBeUndefined();
+    expect(blocks[2].children?.find((n) => n.type === "code")?.visibility).toBeUndefined();
   });
 });
 

@@ -82,6 +82,19 @@ load. Activate starts an in-browser JupyterLite/Pyodide kernel (via
 The kernel bundles and Pyodide load outside the app JS bundle (vendored by
 `scripts/copy-thebe.mjs`), so the Pages deploy stays independent of the kernel.
 
+### Hiding code that still runs
+
+Authors can use the standard Jupyter/MyST cell tags to hide a cell's code (or
+output) without stopping it from executing — useful for setup/plotting code
+that shouldn't clutter the narrative:
+
+- `.md`: `` ```{code-cell} python `` with `:tags: [remove-input]`
+- `.ipynb`: `"tags": ["remove-input"]` in the cell's metadata
+
+`remove-input` / `remove-output` / `remove-cell` hide that part entirely;
+`hide-*` variants render it as a collapsed disclosure the reader can expand.
+Hidden cells still execute on Run all / `?run`.
+
 ## Reading the product's own files
 
 When embedded with `?base=<product base URL>`, the viewer prepends one visible,

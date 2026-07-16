@@ -16,7 +16,38 @@ type AstNode = {
   executable?: boolean;
   kind?: string;
   jupyter_data?: unknown;
+  data?: { tags?: string[] };
+  visibility?: "hide" | "remove";
 };
+
+/**
+ * Map the standard Jupyter/MyST cell tags (`remove-input`, `hide-output`, …)
+ * onto the `visibility` field that `myst-to-react` / `@myst-theme/jupyter`
+ * already honor: `remove-*` hides the part entirely, `hide-*` renders it as a
+ * collapsed disclosure. Execution is unaffected — `notebookFromMdast` collects
+ * cells regardless of visibility, so hidden code still runs. The full MyST
+ * pipeline does this in a myst-cli transform we don't run.
+ */
+function applyCellTags(block: AstNode): void {
+  const tags = block.data?.tags;
+  if (!tags?.length) return;
+  const set = (node: AstNode | undefined, part: string) => {
+    if (!node) return;
+    if (tags.includes(`remove-${part}`)) node.visibility = "remove";
+    else if (tags.includes(`hide-${part}`)) node.visibility = "hide";
+  };
+  set(block, "cell");
+  set(block.children?.find((n) => n.type === "code"), "input");
+  set(block.children?.find((n) => n.type === "outputs"), "output");
+}
+
+// `{code-cell}` directives put `:tags:` on `block.data.tags`; find them.
+function applyTagVisibility(nodes: AstNode[]): void {
+  for (const node of nodes) {
+    if (node.type === "block") applyCellTags(node);
+    if (node.children) applyTagVisibility(node.children);
+  }
+}
 
 /**
  * `mystParse` leaves directives/roles as `mystDirective`/`mystRole` WRAPPER
@@ -69,6 +100,7 @@ function ensureKeys(nodes: AstNode[]): void {
 export function parseMarkdown(text: string): MystRoot {
   const root = mystParse(text);
   const children = unwrapDirectives(root.children as AstNode[]);
+  applyTagVisibility(children);
   ensureKeys(children);
   // @myst-theme/jupyter's notebookFromMdast runs `node.children.reduce(...)`
   // over every top-level node when building the ThebeNotebook on Activate;
@@ -116,14 +148,17 @@ export function parseNotebook(text: string): MystRoot {
         type: "output",
         jupyter_data: output,
       }));
-      children.push({
+      const block: AstNode = {
         type: "block",
         kind: "notebook-code",
+        data: { tags: cell.metadata?.tags },
         children: [
           { type: "code", lang, executable: true, value: source },
           { type: "outputs", children: outputNodes },
         ],
-      });
+      };
+      applyCellTags(block);
+      children.push(block);
     }
   }
   ensureKeys(children);

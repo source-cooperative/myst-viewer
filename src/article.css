@@ -42,6 +42,13 @@
   overflow-wrap: break-word;
 }
 
+/* myst-to-react / @myst-theme/jupyter mark `visibility: remove` nodes (cell
+   tags like `remove-input`) with Tailwind's `hidden` utility; we don't ship
+   Tailwind, so define it. */
+.myst-article .hidden {
+  display: none;
+}
+
 /* --- Headings (Radix Heading scale) ---------------------------------------- */
 .myst-article :where(h1, h2, h3, h4, h5, h6) {
   font-family: var(--heading-font-family);
