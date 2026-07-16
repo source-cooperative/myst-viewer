@@ -25,39 +25,49 @@ available.
 The map below is not a static image. It is rendered **live in your browser**:
 an in-browser Python kernel streams the latest hour of data straight from
 `data.source.coop` (a few MB over HTTP range requests — no server, no
-download step) and plots it. Expand the collapsed cells to see exactly how.
+download step) and plots it. Expand the collapsed cell to see exactly how.
 Overnight hours can be quiet — gray means dry or no radar coverage.
 
 ```{code-cell} python
-:tags: [remove-cell]
+:tags: [remove-input]
+# Everything needed to draw the map lives in this one cell: install zarr 3,
+# define a fetch-based store (WebAssembly has no threads or sockets for
+# zarr's usual I/O), read the latest hour, and plot it. In a regular Python
+# environment all of this is one line — see "Using this dataset" below.
+import asyncio
+import importlib
+import logging
+
 import micropip
 from pyodide.http import pyfetch
 
-await micropip.install(["numcodecs", "crc32c", "donfig", "typing-extensions"])
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)  # keep the font-cache notice out of the output
 
 # zarr 3 pins numcodecs>=0.14, which has no Pyodide build — the bundled
 # (compiled) 0.13 works fine — so zarr must install with deps=False. micropip
 # 0.8 has a download race with deps=False on network wheels, so fetch the
 # wheel ourselves and install it from the local filesystem.
-# (Also: no `import zarr` in THIS cell — the kernel pre-scans cell source and
-# would auto-install the old bundled zarr 2 before micropip runs.)
+await micropip.install(["numcodecs", "crc32c", "donfig", "typing-extensions"])
 WHEEL = "https://files.pythonhosted.org/packages/45/57/3329346940f78de49047ddcb03fdbca9e16450c3a942688bf24201a322e5/zarr-3.0.10-py3-none-any.whl"
 path = "/tmp/" + WHEEL.rsplit("/", 1)[1]
 open(path, "wb").write(await (await pyfetch(WHEEL)).bytes())
 await micropip.install("emfs:" + path, deps=False)
-```
 
-```{code-cell} python
-:tags: [remove-cell]
-# zarr's usual I/O machinery needs threads and sockets, which WebAssembly
-# doesn't have. Its async API only needs something that can fetch bytes, so
-# this minimal store maps zarr reads onto the browser's fetch. In a regular
-# Python environment none of this is needed — see "Using this dataset" below.
-import asyncio
+# zarr is imported dynamically: the kernel pre-scans this cell's source for
+# import statements, and a literal `import zarr` here would auto-load the old
+# bundled zarr 2 before micropip installs zarr 3 above.
+_abc = importlib.import_module("zarr.abc.store")
+Store = _abc.Store
+RangeByteRequest = _abc.RangeByteRequest
+OffsetByteRequest = _abc.OffsetByteRequest
+SuffixByteRequest = _abc.SuffixByteRequest
+azarr = importlib.import_module("zarr.api.asynchronous")
 
-import zarr
-from pyodide.http import pyfetch
-from zarr.abc.store import Store, RangeByteRequest, OffsetByteRequest, SuffixByteRequest
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import xarray as xr
+from matplotlib.colors import LogNorm
 
 
 class HTTPStore(Store):
@@ -102,20 +112,11 @@ class HTTPStore(Store):
     def list(self): raise NotImplementedError
     def list_prefix(self, prefix): raise NotImplementedError
     def list_dir(self, prefix): raise NotImplementedError
-```
 
-```{code-cell} python
-:tags: [remove-cell]
+
 # Open the dataset (one request, thanks to consolidated metadata) and read
 # the latest hour over a Gulf Coast / Southeast US box. Chunks span the full
 # time axis, so a regional box keeps the download to a few MB.
-import matplotlib.pyplot as plt  # imported here so the font-cache notice stays hidden
-import numpy as np
-import pandas as pd
-import xarray as xr
-import zarr.api.asynchronous as azarr
-from matplotlib.colors import LogNorm
-
 URL = "https://data.source.coop/dynamical/noaa-mrms-conus-analysis-hourly/v0.3.0.zarr"
 
 store = HTTPStore(URL)
@@ -141,10 +142,7 @@ rain = xr.DataArray(
     name="precipitation_rate",
     attrs={"units": "mm/h"},
 )
-```
 
-```{code-cell} python
-:tags: [remove-input]
 fig, ax = plt.subplots(figsize=(9, 5.5))
 ax.set_facecolor("#e8e8e8")  # dry areas
 rain.where(rain >= 0.1).plot.imshow(
