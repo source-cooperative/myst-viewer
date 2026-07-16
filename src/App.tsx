@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { parseParams } from "./params";
+import { parseParams, resolveTheme } from "./params";
 import { detectKind, fetchSource, SourceError } from "./source";
 import { parseMarkdown, parseNotebook, withSourceUrl } from "./parse";
 import type { MystRoot } from "./parse";
@@ -30,7 +30,7 @@ function App() {
     // without a url, so read theme directly here.
     const q = new URLSearchParams(window.location.search);
     if (!q.get("url")) {
-      setState({ status: "home", theme: q.get("theme") === "dark" ? "dark" : "light" });
+      setState({ status: "home", theme: resolveTheme(q.get("theme")) });
       return;
     }
     (async () => {

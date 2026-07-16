@@ -36,7 +36,7 @@ The query string is the integration contract — keep it stable.
 | -------- | -------- | --------------------------------------------------------------------- |
 | `url`      | yes      | Encoded absolute URL of the `.md`/`.ipynb` object to render.        |
 | `iframe`   | no       | `true` — convention flag marking an embedded view.                  |
-| `theme`    | no       | `light` (default) or `dark`.                                        |
+| `theme`    | no       | `light` or `dark`. Defaults to the browser's color-scheme preference. |
 | `base`     | no       | Product base URL; when set, exposes `SOURCE_URL` to compute cells.  |
 | `activate` | no       | `true` — boot the kernel on load, skipping the Activate button.     |
 | `run`      | no       | `true` — also run every cell once the kernel is ready (implies `activate`). |
