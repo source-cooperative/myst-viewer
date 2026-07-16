@@ -65,6 +65,14 @@ describe("parseMarkdown", () => {
     expect(all.length).toBeGreaterThan(0);
     expect(all.every((n) => typeof n.key === "string" && n.key.length > 0)).toBe(true);
   });
+
+  it("gives every top-level node a children array (thematicBreak, code fences)", () => {
+    // notebookFromMdast (@myst-theme/jupyter) does `node.children.reduce(...)`
+    // on every top-level node on Activate; childless ones used to crash it.
+    const doc = parseMarkdown("Intro.\n\n---\n\n```python\nx = 1\n```\n") as Node;
+    expect(doc.children!.some((n) => n.type === "thematicBreak")).toBe(true);
+    expect(doc.children!.every((n) => Array.isArray(n.children))).toBe(true);
+  });
 });
 
 describe("parseNotebook", () => {

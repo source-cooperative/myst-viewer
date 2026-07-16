@@ -70,6 +70,11 @@ export function parseMarkdown(text: string): MystRoot {
   const root = mystParse(text);
   const children = unwrapDirectives(root.children as AstNode[]);
   ensureKeys(children);
+  // @myst-theme/jupyter's notebookFromMdast runs `node.children.reduce(...)`
+  // over every top-level node when building the ThebeNotebook on Activate;
+  // childless ones (thematicBreak, plain code fences) crash it. Inert for
+  // rendering, so give them an empty array.
+  for (const node of children) node.children ??= [];
   return { ...root, children: children as MystRoot["children"] };
 }
 
