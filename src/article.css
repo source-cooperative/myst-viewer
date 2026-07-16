@@ -496,3 +496,14 @@
   top: 0;
   left: 0;
 }
+
+/* Grey bar down the left of a cell while it's executing (JupyterLab-style
+ * gutter accent). The spinner overlay is only in the DOM during execution, so
+ * `:has()` needs no JS; `[id]` picks the outer cell block, not the inner
+ * controls wrapper, which reuses the same class. Negative margin cancels the
+ * border + padding so content doesn't shift when the bar appears. */
+.myst-article .myst-jp-nb-block[id]:has(.myst-jp-btn-spinner-overlay) {
+  border-left: 3px solid var(--gray-8);
+  padding-left: var(--space-3);
+  margin-left: calc(-1 * var(--space-3) - 3px);
+}
