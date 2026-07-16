@@ -1,31 +1,35 @@
-# NOAA MRMS precipitation — the latest hour
+# NOAA MRMS CONUS analysis, hourly
 
-[NOAA MRMS CONUS analysis, hourly](https://source.coop/dynamical/noaa-mrms-conus-analysis-hourly)
-is an hourly precipitation analysis over the continental US at ~1 km
-resolution, from 2014 to the present hour, published on Source Cooperative as
-cloud-optimized Zarr by [dynamical.org](https://dynamical.org/catalog/noaa-mrms-conus-analysis-hourly/).
+The NOAA Multi-Radar/Multi-Sensor System (MRMS) integrates data from multiple
+radars and radar networks, surface observations, numerical weather prediction
+models, and climatology to generate seamless, high-resolution mosaics of
+precipitation and severe weather over the contiguous United States.
 
-This document streams **the latest hour of rainfall** straight from
-`data.source.coop` into an in-browser Python kernel — no server, no download
-step. Click **Activate**, then run the cells top to bottom (the region read in
-step 4 fetches ~10 MB).
+This dataset is an archive of MRMS hourly precipitation analyses, processed
+into cloud-optimized Zarr by [dynamical.org](https://dynamical.org/catalog/noaa-mrms-conus-analysis-hourly/)
+and hosted on [Source Cooperative](https://source.coop/dynamical/noaa-mrms-conus-analysis-hourly).
+It updates continuously — the preview below reads the most recent hour
+available.
 
-```{note}
-In a regular Python environment you don't need any of the store plumbing
-below — `xr.open_zarr("https://data.source.coop/dynamical/noaa-mrms-conus-analysis-hourly/v0.3.0.zarr")`
-is all it takes. See the [dynamical.org docs](https://dynamical.org/catalog/noaa-mrms-conus-analysis-hourly/)
-for examples. The custom store here exists only because the browser kernel
-(Pyodide/WASM) has no threads or sockets for zarr's usual I/O machinery.
-```
+| | |
+|---|---|
+| **Spatial domain** | Continental United States |
+| **Spatial resolution** | 0.01 degrees (~1 km) |
+| **Time domain** | 2014-11-01 00:00 UTC to present |
+| **Time resolution** | 1 hour |
+| **Format** | Zarr v3, sharded, consolidated metadata |
+| **License** | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 
-## 1. Install zarr
+## Live preview — rainfall over the last hour
 
-The dataset is Zarr v3 with sharding, which needs `zarr>=3`. Pyodide ships
-compiled builds of the codecs it depends on (`numcodecs`, `crc32c`), so we
-install those first and then `zarr` itself without dependency resolution.
+The map below is not a static image. It is rendered **live in your browser**:
+an in-browser Python kernel streams the latest hour of data straight from
+`data.source.coop` (a few MB over HTTP range requests — no server, no
+download step) and plots it. Expand the collapsed cells to see exactly how.
+Overnight hours can be quiet — gray means dry or no radar coverage.
 
 ```{code-cell} python
-:tags: [hide-input]
+:tags: [remove-cell]
 import micropip
 from pyodide.http import pyfetch
 
@@ -41,27 +45,19 @@ WHEEL = "https://files.pythonhosted.org/packages/45/57/3329346940f78de49047ddcb0
 path = "/tmp/" + WHEEL.rsplit("/", 1)[1]
 open(path, "wb").write(await (await pyfetch(WHEEL)).bytes())
 await micropip.install("emfs:" + path, deps=False)
-
-print("zarr installed")
 ```
 
-## 2. A fetch-based zarr store
-
-zarr's sync API needs an I/O thread and its fsspec store needs sockets —
-neither exists in WebAssembly. Its *async* API only needs something that can
-fetch bytes, so this minimal store maps zarr reads onto the browser's `fetch`.
-HTTP Range requests let zarr pull individual ~MB chunks out of the dataset's
-multi-gigabyte shard objects.
-
 ```{code-cell} python
-:tags: [hide-input]
+:tags: [remove-cell]
+# zarr's usual I/O machinery needs threads and sockets, which WebAssembly
+# doesn't have. Its async API only needs something that can fetch bytes, so
+# this minimal store maps zarr reads onto the browser's fetch. In a regular
+# Python environment none of this is needed — see "Using this dataset" below.
 import asyncio
 
 import zarr
 from pyodide.http import pyfetch
 from zarr.abc.store import Store, RangeByteRequest, OffsetByteRequest, SuffixByteRequest
-
-print("zarr", zarr.__version__)
 
 
 class HTTPStore(Store):
@@ -75,8 +71,6 @@ class HTTPStore(Store):
     def __init__(self, base_url):
         super().__init__(read_only=True)
         self.base = base_url.rstrip("/")
-        self.nbytes = 0  # downloaded payload, for reporting
-        self.nreq = 0
 
     def __eq__(self, other):
         return isinstance(other, HTTPStore) and other.base == self.base
@@ -93,8 +87,6 @@ class HTTPStore(Store):
         if resp.status in (403, 404):
             return None  # zarr probes for optional keys; missing is normal
         data = await resp.bytes()
-        self.nreq += 1
-        self.nbytes += len(data)
         return prototype.buffer.from_bytes(data)
 
     async def get_partial_values(self, prototype, key_ranges):
@@ -110,22 +102,19 @@ class HTTPStore(Store):
     def list(self): raise NotImplementedError
     def list_prefix(self, prefix): raise NotImplementedError
     def list_dir(self, prefix): raise NotImplementedError
-
-
-print("HTTPStore defined")
 ```
 
-## 3. Open the dataset
-
-Consolidated metadata means opening the whole hierarchy costs a single
-request. The coordinate arrays are small, so we read them eagerly — the last
-`time` value is the latest available hour.
-
 ```{code-cell} python
-:tags: [hide-input]
+:tags: [remove-cell]
+# Open the dataset (one request, thanks to consolidated metadata) and read
+# the latest hour over a Gulf Coast / Southeast US box. Chunks span the full
+# time axis, so a regional box keeps the download to a few MB.
+import matplotlib.pyplot as plt  # imported here so the font-cache notice stays hidden
 import numpy as np
 import pandas as pd
+import xarray as xr
 import zarr.api.asynchronous as azarr
+from matplotlib.colors import LogNorm
 
 URL = "https://data.source.coop/dynamical/noaa-mrms-conus-analysis-hourly/v0.3.0.zarr"
 
@@ -136,19 +125,7 @@ times = pd.to_datetime(await (await root.getitem("time")).getitem(slice(None)), 
 lats = await (await root.getitem("latitude")).getitem(slice(None))  # descending: north -> south
 lons = await (await root.getitem("longitude")).getitem(slice(None))
 
-print(f"{len(times):,} hourly steps, {times[0]} to {times[-1]} UTC")
-print(f"grid: {len(lats)} x {len(lons)} at ~1 km")
-```
-
-## 4. Read the latest hour
-
-Chunks span the full time axis, so reading all of CONUS for one hour would
-touch every spatial chunk (gigabytes). A regional box keeps the download to a
-few MB — move or widen it as you like.
-
-```{code-cell} python
-:tags: [hide-input]
-LAT_MIN, LAT_MAX, LON_MIN, LON_MAX = 27.0, 33.0, -91.0, -81.0  # Gulf Coast / Southeast US
+LAT_MIN, LAT_MAX, LON_MIN, LON_MAX = 27.0, 33.0, -91.0, -81.0
 
 lat_ix = np.where((lats >= LAT_MIN) & (lats <= LAT_MAX))[0]
 lon_ix = np.where((lons >= LON_MIN) & (lons <= LON_MAX))[0]
@@ -157,8 +134,6 @@ sel = (len(times) - 1, slice(lat_ix[0], lat_ix[-1] + 1), slice(lon_ix[0], lon_ix
 precip = await root.getitem("precipitation_surface")
 block = await precip.getitem(sel)  # kg m-2 s-1, equivalent to mm/s
 
-import xarray as xr
-
 rain = xr.DataArray(
     block * 3600.0,  # mm/s -> mm/h
     dims=("latitude", "longitude"),
@@ -166,21 +141,10 @@ rain = xr.DataArray(
     name="precipitation_rate",
     attrs={"units": "mm/h"},
 )
-print(f"latest hour: {times[-1]} UTC | grid {rain.shape}")
-print(f"downloaded {store.nbytes / 1e6:.1f} MB in {store.nreq} requests")
-print(f"raining on {float((rain > 0.1).mean()) * 100:.1f}% of the box, peak {float(rain.max()):.1f} mm/h")
 ```
 
-## 5. Render it
-
-A log color scale is standard for rainfall — most wet pixels drizzle, a few
-pour. Gray is dry (or no radar coverage); overnight hours can be quiet.
-
 ```{code-cell} python
-:tags: [hide-input]
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
-
+:tags: [remove-input]
 fig, ax = plt.subplots(figsize=(9, 5.5))
 ax.set_facecolor("#e8e8e8")  # dry areas
 rain.where(rain >= 0.1).plot.imshow(
@@ -188,13 +152,43 @@ rain.where(rain >= 0.1).plot.imshow(
     norm=LogNorm(vmin=0.1, vmax=max(30.0, float(rain.max()))),
     cbar_kwargs={"label": "precipitation rate (mm/h)"},
 )
-ax.set_title(f"MRMS hourly precipitation — {times[-1]:%Y-%m-%d %H:%M} UTC")
+ax.set_title(f"MRMS hourly precipitation, Gulf Coast — {times[-1]:%Y-%m-%d %H:%M} UTC")
 ax.set_aspect("equal")
 plt.show()
 ```
 
----
+## Using this dataset
 
-Data: NOAA NWS NCEP MRMS, processed into Zarr by
-[dynamical.org](https://dynamical.org) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/),
-hosted on [Source Cooperative](https://source.coop/dynamical/noaa-mrms-conus-analysis-hourly).
+In a regular Python environment, one line opens the whole 11-year archive —
+xarray and zarr stream only the chunks you touch:
+
+```python
+import xarray as xr
+
+ds = xr.open_zarr("https://data.source.coop/dynamical/noaa-mrms-conus-analysis-hourly/v0.3.0.zarr")
+ds["precipitation_surface"].sel(time="2026-01-01T00", latitude=40, longitude=-90, method="nearest").compute()
+```
+
+See the [dynamical.org catalog page](https://dynamical.org/catalog/noaa-mrms-conus-analysis-hourly/)
+for quickstart notebooks and the full variable reference.
+
+## Variables
+
+All variables share dimensions `time × latitude × longitude`.
+
+| variable | description | units |
+|---|---|---|
+| `precipitation_surface` | Average precipitation rate over the previous hour (multi-sensor, gauge-corrected) | kg m⁻² s⁻¹ (≡ mm/s) |
+| `precipitation_radar_only_surface` | Radar-only precipitation rate, no gauge correction | kg m⁻² s⁻¹ |
+| `precipitation_pass_1_surface` | Multi-sensor pass 1 (lower latency, fewer gauges; Oct 2020+) | kg m⁻² s⁻¹ |
+| `precipitation_pass_2_surface` | Multi-sensor pass 2 (higher latency, more gauges; Oct 2020+) | kg m⁻² s⁻¹ |
+| `categorical_precipitation_type_surface` | Surface precipitation type flag (rain / snow / hail / …) | 1 |
+| `flash_qpe_ffg_max_surface` | Max QPE-to-flash-flood-guidance percentage (Oct 2020+) | percent |
+
+## License and attribution
+
+Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Cite as: *NOAA NWS NCEP MRMS data processed by
+[dynamical.org](https://dynamical.org) from NOAA NCEP, NOAA Open Data
+Dissemination and Iowa Mesonet archives*, hosted on
+[Source Cooperative](https://source.coop/dynamical/noaa-mrms-conus-analysis-hourly).
