@@ -17,7 +17,8 @@ import "./article.css";
  *
  * By default the article is fully static (syntax-highlighted code, no kernel) —
  * we never boot WASM on load. If the document has executable code cells we show
- * an **Activate** button; clicking it mounts the thebe-lite provider stack (see
+ * **Activate** (play) and **Run all** (fast-forward) buttons in the top right;
+ * clicking either mounts the thebe-lite provider stack (see
  * `ComputeProviders`), re-renders the same `<MyST>` tree with the Jupyter
  * renderers, and boots an in-browser JupyterLite kernel so cells become
  * runnable with live inline outputs.
@@ -40,6 +41,7 @@ export function Article({
   run?: boolean; // run all cells once the kernel is ready (implies activate)
 }) {
   const [active, setActive] = useState(activate);
+  const [autorun, setAutorun] = useState(run);
   const hasCode = useMemo(() => hasComputeCells(root.children), [root]);
   const renderers = active ? COMPUTE_RENDERERS : DEFAULT_RENDERERS;
   const body = <MyST ast={root.children} />;
@@ -76,9 +78,17 @@ export function Article({
             className={theme === "dark" ? "myst-article dark" : "myst-article"}
             data-theme={theme}
           >
-            {hasCode && !active && <Activate onActivate={() => setActive(true)} />}
+            {hasCode && !active && (
+              <Activate
+                onActivate={() => setActive(true)}
+                onRunAll={() => {
+                  setAutorun(true);
+                  setActive(true);
+                }}
+              />
+            )}
             {active ? (
-              <ComputeProviders root={root} autorun={run}>
+              <ComputeProviders root={root} autorun={autorun}>
                 {body}
               </ComputeProviders>
             ) : (
