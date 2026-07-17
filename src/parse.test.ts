@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseMarkdown, parseNotebook, withSourceUrl } from "./parse";
-import { hasComputeCells } from "./Activate";
+import { hasComputeCells, usesIpywidgets } from "./Activate";
 import sampleMd from "./__fixtures__/sample.md?raw";
 import sampleIpynb from "./__fixtures__/sample.ipynb?raw";
 
@@ -133,6 +133,23 @@ describe("MyST {code-cell} markdown reconciliation", () => {
     expect(hasComputeCells((root as Node).children)).toBe(true);
     // prose-only documents are not flagged
     expect(hasComputeCells(parseMarkdown("# Hi\n\njust text").children as unknown)).toBe(false);
+  });
+});
+
+describe("usesIpywidgets", () => {
+  it("flags notebooks whose code references ipywidgets", () => {
+    const ipynb = JSON.stringify({
+      cells: [{ cell_type: "code", source: ["import ipywidgets as W\n"], outputs: [] }],
+      metadata: { language_info: { name: "python" } },
+      nbformat: 4,
+      nbformat_minor: 5,
+    });
+    expect(usesIpywidgets((parseNotebook(ipynb) as Node).children)).toBe(true);
+  });
+
+  it("ignores widget-free documents", () => {
+    const root = parseMarkdown("```{code-cell} python\nprint(1)\n```");
+    expect(usesIpywidgets((root as Node).children)).toBe(false);
   });
 });
 
