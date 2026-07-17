@@ -177,26 +177,36 @@ function ComputeStatus({ autorun }: { autorun: boolean }) {
   else if (timedOut)
     message =
       "Python didn’t start in time — the kernel download may have stalled or this " +
-      "browser can’t run it. ";
-  else if (error) message = `Compute error: ${error} `;
+      "browser can’t run it.";
+  else if (error) message = `Compute error: ${error}`;
   else message = "Starting Python… booting the in-browser kernel (first run is large).";
+
+  const dotColor =
+    status === "ready" ? "#16a34a" : status === "error" ? "#dc2626" : "#eab308";
 
   return (
     <Flex
       data-compute-status={status}
       role="status"
+      aria-label={message}
       align="center"
-      gap="3"
+      justify="end"
+      gap="2"
       my="4"
-      style={{
-        padding: "0.5rem 0.75rem",
-        borderRadius: "0.375rem",
-        background: failed ? "#fee2e2" : sessionReady ? "#dcfce7" : "#fef9c3",
-        color: "#1f2937",
-        fontSize: "0.95rem",
-      }}
     >
-      <span style={{ flex: 1 }}>{message}</span>
+      <Tooltip content={message}>
+        <span
+          tabIndex={0}
+          style={{
+            width: "0.625rem",
+            height: "0.625rem",
+            borderRadius: "50%",
+            background: dotColor,
+            display: "inline-block",
+            flexShrink: 0,
+          }}
+        />
+      </Tooltip>
       {failed ? (
         <Button size="1" color="red" variant="outline" onClick={retry}>
           Retry
