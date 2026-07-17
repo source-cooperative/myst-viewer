@@ -10,6 +10,7 @@ import {
   BusyScopeProvider,
   ExecuteScopeProvider,
   JUPYTER_RENDERERS,
+  useBusyScope,
   useExecutionScope,
 } from "@myst-theme/jupyter";
 import { Button, Flex, IconButton, Tooltip } from "@radix-ui/themes";
@@ -132,6 +133,9 @@ function ComputeStatus({ autorun }: { autorun: boolean }) {
   const { start, execute, state } = useExecutionScope();
   const { core } = useThebeLoader();
   const { ready: serverReady, error } = useThebeServer();
+  const busy = useBusyScope();
+  // Any cell currently executing (or the notebook resetting) in this scope.
+  const executing = busy.page(SLUG, "execute") || busy.page(SLUG, "reset");
   const sessionReady = !!state.pages[SLUG]?.scopes[SLUG]?.session;
   const [attempt, setAttempt] = useState(0);
   const [timedOut, setTimedOut] = useState(false);
@@ -168,7 +172,8 @@ function ComputeStatus({ autorun }: { autorun: boolean }) {
   const failed = !sessionReady && (timedOut || !!error);
   const status = sessionReady ? "ready" : failed ? "error" : "starting";
   let message: string;
-  if (sessionReady) message = "Python ready — run the cells below.";
+  if (sessionReady)
+    message = executing ? "Running cells…" : "Python ready — run the cells below.";
   else if (timedOut)
     message =
       "Python didn’t start in time — the kernel download may have stalled or this " +
@@ -197,7 +202,7 @@ function ComputeStatus({ autorun }: { autorun: boolean }) {
           Retry
         </Button>
       ) : (
-        <Tooltip content="Run all cells">
+        <Tooltip content={executing ? "Cells are running…" : "Run all cells"}>
           <IconButton
             size="1"
             variant="solid"
@@ -205,6 +210,7 @@ function ComputeStatus({ autorun }: { autorun: boolean }) {
             aria-label="Run all"
             className="myst-viewer-run-all"
             disabled={!sessionReady}
+            loading={sessionReady && executing}
             onClick={() => execute(SLUG)}
           >
             <FastForwardIcon />
