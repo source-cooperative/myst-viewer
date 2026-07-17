@@ -10,8 +10,10 @@ import {
   BusyScopeProvider,
   ExecuteScopeProvider,
   JUPYTER_RENDERERS,
+  useBusyScope,
   useExecutionScope,
 } from "@myst-theme/jupyter";
+import { Button, Flex, IconButton, Tooltip } from "@radix-ui/themes";
 import { DEFAULT_RENDERERS } from "myst-to-react";
 import { mergeRenderers } from "@myst-theme/providers";
 import { SourceFileKind } from "myst-spec-ext";
@@ -53,6 +55,19 @@ export function hasComputeCells(nodes: unknown): boolean {
   return false;
 }
 
+// Jupyter-toolbar-style glyphs (play = activate, fast-forward = run all).
+const PlayIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+    <path d="M4 2l10 6-10 6z" />
+  </svg>
+);
+const FastForwardIcon = () => (
+  <svg width="16" height="14" viewBox="0 0 18 16" fill="currentColor" aria-hidden>
+    <path d="M2 2l8 6-8 6z" />
+    <path d="M9 2l8 6-8 6z" />
+  </svg>
+);
+
 /**
  * True if any code in the AST mentions ipywidgets. The widget FRONTEND
  * (ipywidgets 8 manager, jsDelivr loading for custom widgets like anywidget)
@@ -72,29 +87,43 @@ export function usesIpywidgets(nodes: unknown): boolean {
 }
 
 /**
- * The Activate button. Rendered before compute is switched on; clicking it
- * mounts the thebe-lite provider stack (which boots the kernel). We never boot
- * WASM on load — only here, on an explicit click.
+ * The pre-compute controls, top right: **Activate** (play) boots the kernel,
+ * **Run all** (fast-forward) boots it AND executes every cell once ready.
+ * Rendered before compute is switched on; clicking either mounts the
+ * thebe-lite provider stack. We never boot WASM on load — only here, on an
+ * explicit click.
  */
-export function Activate({ onActivate }: { onActivate: () => void }) {
+export function Activate({
+  onActivate,
+  onRunAll,
+}: {
+  onActivate: () => void;
+  onRunAll: () => void;
+}) {
   return (
-    <button
-      type="button"
-      onClick={onActivate}
-      className="myst-viewer-activate"
-      style={{
-        margin: "1rem 0",
-        padding: "0.5rem 1rem",
-        fontSize: "1rem",
-        cursor: "pointer",
-        borderRadius: "0.375rem",
-        border: "1px solid #2563eb",
-        background: "#2563eb",
-        color: "white",
-      }}
-    >
-      Activate
-    </button>
+    <Flex gap="2" my="4" justify="end">
+      <Tooltip content="Activate — boot the in-browser Python kernel">
+        <IconButton
+          aria-label="Activate"
+          className="myst-viewer-activate"
+          variant="solid"
+          highContrast
+          onClick={onActivate}
+        >
+          <PlayIcon />
+        </IconButton>
+      </Tooltip>
+      <Tooltip content="Run all cells (boots the kernel first)">
+        <IconButton
+          aria-label="Run all"
+          className="myst-viewer-run-all"
+          variant="soft"
+          onClick={onRunAll}
+        >
+          <FastForwardIcon />
+        </IconButton>
+      </Tooltip>
+    </Flex>
   );
 }
 
@@ -122,6 +151,9 @@ function ComputeStatus({ autorun, needsWidgets }: { autorun: boolean; needsWidge
   const { start, execute, state } = useExecutionScope();
   const { core } = useThebeLoader();
   const { ready: serverReady, error } = useThebeServer();
+  const busy = useBusyScope();
+  // Any cell currently executing (or the notebook resetting) in this scope.
+  const executing = busy.page(SLUG, "execute") || busy.page(SLUG, "reset");
   const session = state.pages[SLUG]?.scopes[SLUG]?.session;
   const sessionReady = !!session;
   const [attempt, setAttempt] = useState(0);
@@ -183,7 +215,8 @@ function ComputeStatus({ autorun, needsWidgets }: { autorun: boolean; needsWidge
   const failed = !ready && (timedOut || !!error);
   const status = ready ? "ready" : failed ? "error" : "starting";
   let message: string;
-  if (ready) message = "Python ready — run the cells below.";
+  if (ready)
+    message = executing ? "Running cells…" : "Python ready — run the cells below.";
   else if (sessionReady && !failed) message = "Installing ipywidgets in the kernel…";
   else if (timedOut)
     message =
@@ -193,11 +226,13 @@ function ComputeStatus({ autorun, needsWidgets }: { autorun: boolean; needsWidge
   else message = "Starting Python… booting the in-browser kernel (first run is large).";
 
   return (
-    <div
+    <Flex
       data-compute-status={status}
       role="status"
+      align="center"
+      gap="3"
+      my="4"
       style={{
-        margin: "1rem 0",
         padding: "0.5rem 0.75rem",
         borderRadius: "0.375rem",
         background: failed ? "#fee2e2" : ready ? "#dcfce7" : "#fef9c3",
@@ -205,25 +240,28 @@ function ComputeStatus({ autorun, needsWidgets }: { autorun: boolean; needsWidge
         fontSize: "0.95rem",
       }}
     >
-      {message}
-      {failed && (
-        <button
-          type="button"
-          onClick={retry}
-          style={{
-            marginLeft: "0.25rem",
-            padding: "0.15rem 0.6rem",
-            cursor: "pointer",
-            borderRadius: "0.25rem",
-            border: "1px solid #b91c1c",
-            background: "white",
-            color: "#b91c1c",
-          }}
-        >
+      <span style={{ flex: 1 }}>{message}</span>
+      {failed ? (
+        <Button size="1" color="red" variant="outline" onClick={retry}>
           Retry
-        </button>
+        </Button>
+      ) : (
+        <Tooltip content={executing ? "Cells are running…" : "Run all cells"}>
+          <IconButton
+            size="1"
+            variant="solid"
+            highContrast
+            aria-label="Run all"
+            className="myst-viewer-run-all"
+            disabled={!ready}
+            loading={ready && executing}
+            onClick={() => execute(SLUG)}
+          >
+            <FastForwardIcon />
+          </IconButton>
+        </Tooltip>
       )}
-    </div>
+    </Flex>
   );
 }
 

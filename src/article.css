@@ -42,6 +42,20 @@
   overflow-wrap: break-word;
 }
 
+/* myst-to-react / @myst-theme/jupyter mark `visibility: remove` nodes (cell
+   tags like `remove-input`) with Tailwind's `hidden` utility; we don't ship
+   Tailwind, so define it. */
+.myst-article .hidden {
+  display: none;
+}
+
+/* myst-to-react's <Details> adds its own chevron icon inside <summary>
+   (Tailwind would float/rotate it); without Tailwind it sits next to the
+   native details triangle. Keep the native marker, drop the icon. */
+.myst-article summary .details-toggle {
+  display: none;
+}
+
 /* --- Headings (Radix Heading scale) ---------------------------------------- */
 .myst-article :where(h1, h2, h3, h4, h5, h6) {
   font-family: var(--heading-font-family);
@@ -495,4 +509,36 @@
   position: absolute;
   top: 0;
   left: 0;
+}
+
+/* The spinner SVG's rotation (`animate-spin`) and palette (`text-gray-200`,
+ * `fill-green-600`) are inert Tailwind classes, so it rendered as a static
+ * dark circle over the play icon. Recreate them: light track, dark arc, spin;
+ * and hide the play icon while the spinner is up so it reads as a spinner,
+ * not a circled button. */
+.myst-article .myst-jp-btn-spinner-overlay svg {
+  color: var(--gray-5); /* track ring (currentColor path) */
+  animation: myst-viewer-spin 0.8s linear infinite;
+}
+.myst-article .myst-jp-btn-spinner-overlay svg path[fill="currentFill"] {
+  fill: var(--gray-11); /* the moving arc */
+}
+.myst-article .myst-jp-btn-spinner:has(.myst-jp-btn-spinner-overlay) .myst-jp-btn-run {
+  visibility: hidden;
+}
+@keyframes myst-viewer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Grey bar down the left of a cell while it's executing (JupyterLab-style
+ * gutter accent). The spinner overlay is only in the DOM during execution, so
+ * `:has()` needs no JS; `[id]` picks the outer cell block, not the inner
+ * controls wrapper, which reuses the same class. Negative margin cancels the
+ * border + padding so content doesn't shift when the bar appears. */
+.myst-article .myst-jp-nb-block[id]:has(.myst-jp-btn-spinner-overlay) {
+  border-left: 3px solid var(--gray-8);
+  padding-left: var(--space-3);
+  margin-left: calc(-1 * var(--space-3) - 3px);
 }

@@ -25,6 +25,7 @@ compiled builds of the codecs it depends on (`numcodecs`, `crc32c`), so we
 install those first and then `zarr` itself without dependency resolution.
 
 ```{code-cell} python
+:tags: [hide-input]
 import micropip
 from pyodide.http import pyfetch
 
@@ -53,6 +54,7 @@ HTTP Range requests let zarr pull individual ~MB chunks out of the dataset's
 multi-gigabyte shard objects.
 
 ```{code-cell} python
+:tags: [hide-input]
 import asyncio
 
 import zarr
@@ -120,6 +122,7 @@ request. The coordinate arrays are small, so we read them eagerly — the last
 `time` value is the latest available hour.
 
 ```{code-cell} python
+:tags: [hide-input]
 import numpy as np
 import pandas as pd
 import zarr.api.asynchronous as azarr
@@ -144,6 +147,7 @@ touch every spatial chunk (gigabytes). A regional box keeps the download to a
 few MB — move or widen it as you like.
 
 ```{code-cell} python
+:tags: [hide-input]
 LAT_MIN, LAT_MAX, LON_MIN, LON_MAX = 27.0, 33.0, -91.0, -81.0  # Gulf Coast / Southeast US
 
 lat_ix = np.where((lats >= LAT_MIN) & (lats <= LAT_MAX))[0]
@@ -173,6 +177,7 @@ A log color scale is standard for rainfall — most wet pixels drizzle, a few
 pour. Gray is dry (or no radar coverage); overnight hours can be quiet.
 
 ```{code-cell} python
+:tags: [hide-input]
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
