@@ -6,6 +6,7 @@ const DEMOS: { file: string; label: string; run?: boolean }[] = [
   { file: "numpy-matplotlib.md", label: "NumPy + Matplotlib (MyST .md)" },
   { file: "pandas-explore.ipynb", label: "pandas DataFrames (.ipynb)" },
   { file: "xarray-dataset.ipynb", label: "xarray Dataset (.ipynb, %pip install)" },
+  { file: "pep723.md", label: "PEP 723 inline dependencies (MyST .md)" },
   { file: "mrms-latest-hour.md", label: "NOAA MRMS latest-hour rainfall from source.coop (MyST .md, zarr)" },
   { file: "mrms-latest-hour.ipynb", label: "NOAA MRMS latest-hour rainfall from source.coop (.ipynb, zarr)" },
   // run: true auto-runs on open — README-style pages where only the result matters.

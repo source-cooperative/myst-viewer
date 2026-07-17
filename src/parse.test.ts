@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { parseMarkdown, parseNotebook, withSourceUrl } from "./parse";
+import {
+  parseMarkdown,
+  parseNotebook,
+  pep723Dependencies,
+  withPep723Deps,
+  withSourceUrl,
+} from "./parse";
 import { hasComputeCells } from "./Activate";
 import sampleMd from "./__fixtures__/sample.md?raw";
 import sampleIpynb from "./__fixtures__/sample.ipynb?raw";
@@ -211,5 +217,83 @@ describe("withSourceUrl", () => {
     const after = withSourceUrl(parsed, undefined);
     expect((after.children as Node[])[0].type).toBe("heading");
     expect(JSON.stringify(after)).toBe(before);
+  });
+});
+
+describe("PEP 723 inline script metadata", () => {
+  const block =
+    "# /// script\n" +
+    '# requires-python = ">=3.12"\n' +
+    "# dependencies = [\n" +
+    '#     "pandas==3.0.3",\n' +
+    '#     "lonboard==0.16.0",\n' +
+    "#     'pyarrow>=24',\n" +
+    '#     "duckdb",\n' +
+    "# ]\n" +
+    "# ///";
+
+  const mdWithBlock = `# Doc\n\n\`\`\`{code-cell} python\n${block}\nimport pandas\n\`\`\`\n`;
+
+  const ipynbWithBlock = JSON.stringify({
+    cells: [
+      { cell_type: "code", source: [block, "\n"], outputs: [] },
+      { cell_type: "code", source: ["import pandas\n"], outputs: [] },
+    ],
+    metadata: { language_info: { name: "python" } },
+    nbformat: 4,
+    nbformat_minor: 5,
+  });
+
+  it("extracts dependencies from the first executable cell (.md)", () => {
+    expect(pep723Dependencies(parseMarkdown(mdWithBlock))).toEqual([
+      "pandas==3.0.3",
+      "lonboard==0.16.0",
+      "pyarrow>=24",
+      "duckdb",
+    ]);
+  });
+
+  it("extracts dependencies from the first code cell (.ipynb, juv layout)", () => {
+    expect(pep723Dependencies(parseNotebook(ipynbWithBlock))).toEqual([
+      "pandas==3.0.3",
+      "lonboard==0.16.0",
+      "pyarrow>=24",
+      "duckdb",
+    ]);
+  });
+
+  it("prepends a %pip install cell with version pins stripped", () => {
+    const root = withPep723Deps(parseMarkdown(mdWithBlock));
+    const first = (root.children as Node[])[0];
+    expect(first.kind).toBe("notebook-code");
+    const code = first.children?.find((n) => n.type === "code");
+    expect(code?.executable).toBe(true);
+    expect(code?.value).toContain("%pip install -q pandas lonboard pyarrow duckdb");
+    // keys stay distinct so output routing can't collide
+    const keys = findAll(root as Node, (n) => n.type === "block").map((b) => b.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("composes with withSourceUrl without shadowing the document's first cell", () => {
+    const root = withSourceUrl(withPep723Deps(parseMarkdown(mdWithBlock)), "https://x/y");
+    const values = findAll(root as Node, (n) => n.type === "code").map((n) => n.value);
+    expect(values[0]).toContain("SOURCE_URL");
+    expect(values[1]).toContain("%pip install");
+  });
+
+  it("is a no-op without a metadata block, or when the block is not in the first cell", () => {
+    const plain = parseMarkdown("# Doc\n\n```{code-cell} python\nprint(1)\n```");
+    expect(withPep723Deps(plain)).toBe(plain);
+    // juv's convention is first-cell-only; a block buried later is ignored
+    const late = parseMarkdown(
+      `# Doc\n\n\`\`\`{code-cell} python\nprint(1)\n\`\`\`\n\n\`\`\`{code-cell} python\n${block}\n\`\`\`\n`,
+    );
+    expect(pep723Dependencies(late)).toEqual([]);
+  });
+
+  it("ignores blocks in non-executable code fences", () => {
+    expect(pep723Dependencies(parseMarkdown(`# Doc\n\n\`\`\`python\n${block}\n\`\`\`\n`))).toEqual(
+      [],
+    );
   });
 });
