@@ -37,6 +37,15 @@ const THEBE_OPTIONS = {
 // the execute-scope state machine needs.
 const SLUG = "viewer";
 
+// The ipywidgets wheel chain, vendored into `public/thebe/pypi/` by
+// scripts/copy-thebe.mjs (filenames must match its WHEELS list). Installing
+// from these same-origin URLs skips all PyPI round-trips; widgetsnbextension
+// resolves to the pyodide-kernel's local stub.
+const WIDGET_WHEELS = [
+  "ipywidgets-8.1.8-py3-none-any.whl",
+  "jupyterlab_widgets-3.0.16-py3-none-any.whl",
+];
+
 // Static-by-default renderers extended with the Jupyter ones (`block[kind=
 // notebook-code]`, `outputs`, `output`, …). Only used once compute is active —
 // these renderers call execute-scope hooks that REQUIRE the providers below.
@@ -172,16 +181,22 @@ function ComputeStatus({ autorun, needsWidgets }: { autorun: boolean; needsWidge
     start(SLUG);
   }, [core, serverReady, start, attempt]);
 
-  // The kernel ships no Python-side ipywidgets — install it (piplite, pure
-  // wheel from PyPI) before declaring ready so imports and autorun succeed.
-  // Install failures are swallowed: the notebook's own import error is the
-  // clearer signal, and blocking every non-widget cell on it helps nobody.
+  // The kernel ships no Python-side ipywidgets — install it from the wheels
+  // vendored with the site before declaring ready so imports and autorun
+  // succeed. Install failures are swallowed: the notebook's own import error
+  // is the clearer signal, and blocking every non-widget cell on it helps
+  // nobody.
   useEffect(() => {
     if (!needsWidgets || !session) return;
     if (installedAttempt.current === attempt) return;
     installedAttempt.current = attempt;
+    // Absolute URLs: the install runs inside the kernel's worker, which can't
+    // resolve app-relative paths.
+    const wheels = WIDGET_WHEELS.map(
+      (w) => new URL(`${import.meta.env.BASE_URL}thebe/pypi/${w}`, window.location.href).href,
+    );
     const request = session.kernel?.requestExecute({
-      code: "%pip install -q ipywidgets",
+      code: `%pip install -q ${wheels.join(" ")}`,
       stop_on_error: false,
     });
     if (!request) {

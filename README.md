@@ -77,8 +77,10 @@ load. Activate starts an in-browser JupyterLite/Pyodide kernel (via
 - ipywidgets render live: the widget frontend ships with `thebe-core`, and if a
   document's code mentions `ipywidgets` the viewer pip-installs it into the
   kernel before reporting ready (most notebooks never install it themselves).
-  Custom widgets (anywidget, lonboard, …) load their JS from jsDelivr. Saved
-  widget outputs can't be rehydrated statically — widgets need a live run.
+  The wheels are vendored with the site (`scripts/copy-thebe.mjs`), so the
+  install is a same-origin fetch with no PyPI round-trips. Custom widgets
+  (anywidget, lonboard, …) load their JS from jsDelivr. Saved widget outputs
+  can't be rehydrated statically — widgets need a live run.
 - Cells are run-only (Run + live outputs). Inline editing is a deferred
   follow-up.
 - `input()` / synchronous stdin needs `SharedArrayBuffer` (isolation) and is out

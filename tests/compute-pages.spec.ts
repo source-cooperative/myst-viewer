@@ -50,6 +50,15 @@ test("kernel boots and runs on a header-less (Pages-like) origin without isolati
 // before reporting ready, and thebe-core's bundled widget manager renders the
 // live widget on run.
 test("ipywidgets are auto-installed and render as live widgets", async ({ page }) => {
+  // The wheels are vendored with the site (scripts/copy-thebe.mjs) — the
+  // install must not fall back to PyPI for them.
+  const pypiHits: string[] = [];
+  page.on("request", (req) => {
+    const url = req.url();
+    if (/pypi\.org|pythonhosted\.org/.test(url) && /ipywidgets|jupyterlab[-_]widgets/.test(url))
+      pypiHits.push(url);
+  });
+
   // ?run=true is the risky path: autorun must wait for the install, or the
   // import fails before pip finishes.
   const fixture = `${ORIGIN}/myst-viewer/__e2e__/widgets.ipynb`;
@@ -68,4 +77,5 @@ test("ipywidgets are auto-installed and render as live widgets", async ({ page }
   await expect(slider).toBeVisible({ timeout: 60_000 });
   await expect(slider).toContainText("amount");
   await expect(page.locator(".thebe-ipywidgets-placeholder")).toHaveCount(0);
+  expect(pypiHits).toEqual([]);
 });
