@@ -82,6 +82,24 @@ load. Activate starts an in-browser JupyterLite/Pyodide kernel (via
 The kernel bundles and Pyodide load outside the app JS bundle (vendored by
 `scripts/copy-thebe.mjs`), so the Pages deploy stays independent of the kernel.
 
+### Declaring dependencies (PEP 723)
+
+If the document's **first executable code cell** opens with a [PEP 723 inline
+script metadata](https://peps.python.org/pep-0723/) block — the convention
+[`juv`](https://github.com/manzt/juv) uses for `.ipynb`, mirrored here for
+`.md` `{code-cell}`s — the viewer prepends one visible `%pip install` cell for
+its `dependencies`, so Run all / `?run` installs them before anything else
+executes:
+
+```python
+# /// script
+# dependencies = ["lonboard==0.16.0", "duckdb"]
+# ///
+```
+
+Version pins are stripped (Pyodide ships fixed builds, so micropip usually
+can't honor exact pins); packages install by name. See the `pep723.md` demo.
+
 ### Hiding code that still runs
 
 Authors can use the standard Jupyter/MyST cell tags to hide a cell's code (or
@@ -138,6 +156,7 @@ on a non-isolated, Pages-like origin.
 | `numpy-matplotlib.md`  | MyST Markdown | numpy, matplotlib          |
 | `pandas-explore.ipynb` | Jupyter       | numpy, pandas              |
 | `xarray-dataset.ipynb` | Jupyter       | xarray (`%pip install`), numpy |
+| `pep723.md`            | MyST Markdown | PEP 723 inline dependencies    |
 
 With the dev server running:
 

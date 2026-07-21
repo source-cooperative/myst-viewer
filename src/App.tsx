@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { parseParams, resolveTheme } from "./params";
 import { detectKind, fetchSource, SourceError } from "./source";
-import { parseMarkdown, parseNotebook, withSourceUrl } from "./parse";
+import { parseMarkdown, parseNotebook, withPep723Deps, withSourceUrl } from "./parse";
 import type { MystRoot } from "./parse";
 import { Article } from "./Article";
 import { Home } from "./Home";
@@ -40,9 +40,9 @@ function App() {
         text = await fetchSource(url);
         const parsed =
           detectKind(url) === "ipynb" ? parseNotebook(text) : parseMarkdown(text);
-        // When embedded with ?base=, expose SOURCE_URL so code can read the
-        // product's sibling files (public/unlisted only). No-op without base.
-        const root = withSourceUrl(parsed, base);
+        // PEP 723 first (it reads the DOCUMENT's first executable cell), then
+        // ?base= → SOURCE_URL. Both prepend a runnable cell; both no-op cheaply.
+        const root = withSourceUrl(withPep723Deps(parsed), base);
         if (!cancelled) setState({ status: "loaded", root, theme, activate, run });
       } catch (err) {
         if (cancelled) return;

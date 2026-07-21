@@ -169,25 +169,10 @@ export function parseNotebook(text: string): MystRoot {
   return { type: "root", children: children as MystRoot["children"] };
 }
 
-/**
- * When the viewer is embedded with `?base=<product base URL>`, prepend ONE
- * visible, runnable code cell that defines `SOURCE_URL`, so authors' code can
- * read sibling files, e.g. `pd.read_parquet(f"{SOURCE_URL}/data.parquet")`.
- * The JupyterLite kernel keeps state across a session, so defining it in the
- * first cell makes it available to every later cell once the reader runs it.
- *
- * The cell uses the same executable shape as our reconciliation
- * (`block[kind=notebook-code] > [code, outputs]`) and goes through `ensureKeys`,
- * so it's runnable and its key/output routing can't collide with other cells.
- *
- * ponytail: public/unlisted products only. Restricted products are out of scope
- * — the viewer is a cross-origin iframe with no `sc_proxy_creds` cookie, so
- * presigned/cred-bearing URLs are a separate future design.
- */
-export function withSourceUrl(root: MystRoot, base?: string): MystRoot {
-  if (!base) return root;
-  // JSON.stringify yields a valid double-quoted literal even for a stray `"`.
-  const value = `SOURCE_URL = ${JSON.stringify(base)}  # base URL of this product's files`;
+// One runnable python cell in the same shape our reconciliation emits
+// (`block[kind=notebook-code] > [code, outputs]`), keyed so its output routing
+// can't collide with other cells (keyCounter is monotonic).
+function pythonCell(value: string): AstNode {
   const cell: AstNode = {
     type: "block",
     kind: "notebook-code",
@@ -196,7 +181,91 @@ export function withSourceUrl(root: MystRoot, base?: string): MystRoot {
       { type: "outputs", children: [] },
     ],
   };
-  ensureKeys([cell]); // unique block.key / outputs.id (keyCounter is monotonic)
+  ensureKeys([cell]);
+  return cell;
+}
+
+/**
+ * When the viewer is embedded with `?base=<product base URL>`, prepend ONE
+ * visible, runnable code cell that defines `SOURCE_URL`, so authors' code can
+ * read sibling files, e.g. `pd.read_parquet(f"{SOURCE_URL}/data.parquet")`.
+ * The JupyterLite kernel keeps state across a session, so defining it in the
+ * first cell makes it available to every later cell once the reader runs it.
+ *
+ * ponytail: public/unlisted products only. Restricted products are out of scope
+ * — the viewer is a cross-origin iframe with no `sc_proxy_creds` cookie, so
+ * presigned/cred-bearing URLs are a separate future design.
+ */
+export function withSourceUrl(root: MystRoot, base?: string): MystRoot {
+  if (!base) return root;
+  // JSON.stringify yields a valid double-quoted literal even for a stray `"`.
+  const cell = pythonCell(
+    `SOURCE_URL = ${JSON.stringify(base)}  # base URL of this product's files`,
+  );
+  return {
+    ...root,
+    children: [cell, ...(root.children as AstNode[])] as MystRoot["children"],
+  };
+}
+
+function firstExecutableCode(nodes: AstNode[]): AstNode | undefined {
+  for (const node of nodes) {
+    if (node.type === "code" && node.executable) return node;
+    const hit = node.children && firstExecutableCode(node.children);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/**
+ * Extract PEP 723 inline-script-metadata `dependencies` from the document's
+ * FIRST executable code cell — the `juv` convention for `.ipynb`, mirrored for
+ * `.md` `{code-cell}`s:
+ *
+ *   # /// script
+ *   # dependencies = ["pandas==3.0.3", "lonboard"]
+ *   # ///
+ *
+ * ponytail: no TOML parser — `dependencies = [...]` is the only field we read,
+ * so a regex over the uncommented block covers it. Multi-field blocks work
+ * because unrelated fields are simply never matched.
+ */
+export function pep723Dependencies(root: MystRoot): string[] {
+  const code = firstExecutableCode(root.children as AstNode[]);
+  const block = code?.value?.match(
+    /^#\s*\/\/\/\s*script\s*$([\s\S]*?)^#\s*\/\/\/\s*$/m,
+  );
+  if (!block) return [];
+  const toml = block[1].replace(/^#\s?/gm, "");
+  const deps = toml.match(/dependencies\s*=\s*\[([^\]]*)\]/);
+  if (!deps) return [];
+  return [...deps[1].matchAll(/"([^"]+)"|'([^']+)'/g)].map((m) => m[1] ?? m[2]);
+}
+
+/**
+ * If the document declares PEP 723 dependencies, prepend ONE visible, runnable
+ * `%pip install` cell so the packages are installed in the JupyterLite kernel
+ * before the rest of the document executes ("Run all" and `?run` go
+ * top-to-bottom; manual readers see the install cell first).
+ *
+ * ponytail: version pins and markers are stripped ("pandas==3.0.3" → "pandas")
+ * — Pyodide ships fixed builds of compiled packages, so micropip usually can't
+ * honor exact pins; installing by name lets it resolve what the runtime has.
+ * Extras (`pkg[extra]`) survive. Honoring pins when satisfiable is micropip's
+ * call anyway, not ours.
+ */
+export function withPep723Deps(root: MystRoot): MystRoot {
+  const names = [
+    ...new Set(
+      pep723Dependencies(root)
+        .map((d) => d.replace(/\s*[=<>!~;@].*$/, "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!names.length) return root;
+  const cell = pythonCell(
+    `%pip install -q ${names.join(" ")}  # from PEP 723 metadata`,
+  );
   return {
     ...root,
     children: [cell, ...(root.children as AstNode[])] as MystRoot["children"],
