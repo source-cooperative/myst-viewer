@@ -17,9 +17,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const out = resolve(root, "public/thebe");
 
+// thebe-core comes straight from node_modules. thebe-lite is VENDORED from a
+// patched build (vendor/thebe-lite/lib) rather than node_modules: the published
+// thebe-lite 0.5.0 hard-pins @jupyterlite/pyodide-kernel 0.4.7 (Pyodide 0.27 /
+// Python 3.12), whose bundled worker JS can't drive the Python 3.13 runtime we
+// need for `pyemscripten_2025_0` cp313 wasm wheels. vendor/thebe-lite is thebe
+// rebuilt with kernel 0.7.2 (Pyodide 0.29.x); see vendor/thebe-lite/README.md.
 const sources = [
   resolve(root, "node_modules/thebe-core/dist/lib"),
-  resolve(root, "node_modules/thebe-lite/dist/lib"),
+  resolve(root, "vendor/thebe-lite/lib"),
 ];
 
 await rm(out, { recursive: true, force: true });
