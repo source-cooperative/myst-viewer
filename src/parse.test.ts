@@ -274,6 +274,17 @@ describe("PEP 723 inline script metadata", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
+  it("keeps any annotation OFF the %pip line (piplite feeds every token to micropip)", () => {
+    // Regression: a trailing `# comment` on the install line made JupyterLite
+    // pass "#", "from", … to micropip as package names → InvalidRequirement.
+    const root = withPep723Deps(parseMarkdown(mdWithBlock));
+    const value = (root.children as Node[])[0].children!.find((n) => n.type === "code")!.value!;
+    const pipLine = value.split("\n").find((l) => l.includes("%pip install"))!;
+    // nothing after `%pip install` may look like a comment token
+    expect(pipLine).not.toContain("#");
+    expect(pipLine.trim()).toBe("%pip install -q pandas lonboard pyarrow duckdb");
+  });
+
   it("composes with withSourceUrl without shadowing the document's first cell", () => {
     const root = withSourceUrl(withPep723Deps(parseMarkdown(mdWithBlock)), "https://x/y");
     const values = findAll(root as Node, (n) => n.type === "code").map((n) => n.value);

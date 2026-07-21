@@ -263,8 +263,11 @@ export function withPep723Deps(root: MystRoot): MystRoot {
     ),
   ];
   if (!names.length) return root;
+  // The annotation MUST be its own line: JupyterLite's `%pip install` magic
+  // splits the install line on whitespace and hands every token to micropip, so
+  // a trailing `# comment` there becomes bogus package names ("#", "from", …).
   const cell = pythonCell(
-    `%pip install -q ${names.join(" ")}  # from PEP 723 metadata`,
+    `# installed from PEP 723 inline script metadata\n%pip install -q ${names.join(" ")}`,
   );
   return {
     ...root,
