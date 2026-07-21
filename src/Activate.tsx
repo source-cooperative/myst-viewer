@@ -17,6 +17,7 @@ import { Button, Flex, IconButton, Tooltip } from "@radix-ui/themes";
 import { DEFAULT_RENDERERS } from "myst-to-react";
 import { mergeRenderers } from "@myst-theme/providers";
 import { SourceFileKind } from "myst-spec-ext";
+import type { ThebeServer } from "thebe-core";
 import type { MystRoot } from "./parse";
 
 // thebe-core / thebe-lite bundles are vendored into `public/thebe/` (see
@@ -32,6 +33,37 @@ const THEBE_OPTIONS = {
   // Each Activate is a fresh kernel — don't try to restore a saved session.
   savedSessionOptions: { enabled: false },
 };
+
+// Pin the kernel to a Python 3.13 Pyodide so micropip can install the
+// `pyemscripten_2025_0` cp313 wasm wheels now published to PyPI (arro3-core,
+// geoarrow-rust-core, …). The vendored thebe-lite bundle must be rebuilt against
+// `@jupyterlite/pyodide-kernel` 0.7.2 for its worker JS to drive this runtime
+// (see scripts/copy-thebe.mjs); these URLs only steer that matching kernel.
+//   - Pyodide 0.29.4 is the release where micropip learned to match the new
+//     `pyemscripten` platform tag (earlier 3.13 builds emit `pyodide_2025_0`
+//     and won't resolve the PyPI wheels).
+//   - kernel 0.7.2 is built against Pyodide 0.29.3 — same `pyemscripten_2025_0`
+//     ABI — so pointing it at 0.29.4 is an ABI-identical micro-bump.
+const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.4/full/pyodide.js";
+const KERNEL = "0.7.2";
+const KERNEL_CDN = `https://cdn.jsdelivr.net/npm/@jupyterlite/pyodide-kernel@${KERNEL}/pypi`;
+
+// thebe-react's ThebeServerProvider calls `connectToJupyterLiteServer()` with no
+// config, so the only way to override `pyodideUrl` / the kernel wheel source is
+// the `customConnectFn` escape hatch. The `...:kernel` object REPLACES the
+// bundle's default wholesale (shallow merge), so pipliteUrls/pipliteWheelUrl
+// must be re-listed here or they're lost.
+function connectPy313(server: ThebeServer): Promise<void> {
+  return server.connectToJupyterLiteServer({
+    litePluginSettings: {
+      "@jupyterlite/pyodide-kernel-extension:kernel": {
+        pyodideUrl: PYODIDE_URL,
+        pipliteUrls: [`${KERNEL_CDN}/all.json`],
+        pipliteWheelUrl: `${KERNEL_CDN}/piplite-${KERNEL}-py3-none-any.whl`,
+      },
+    },
+  });
+}
 
 // This viewer renders exactly one document, so a single fixed scope slug is all
 // the execute-scope state machine needs.
@@ -252,7 +284,12 @@ export function ComputeProviders({
   );
   return (
     <ThebeBundleLoaderProvider loadThebeLite publicPath={THEBE_PUBLIC_PATH}>
-      <ThebeServerProvider connect useJupyterLite options={THEBE_OPTIONS}>
+      <ThebeServerProvider
+        connect
+        useJupyterLite
+        options={THEBE_OPTIONS}
+        customConnectFn={connectPy313}
+      >
         <BusyScopeProvider>
           <ExecuteScopeProvider enable contents={contents}>
             <ComputeStatus autorun={autorun} />
