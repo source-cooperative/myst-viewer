@@ -8,7 +8,7 @@ cloud-optimized Zarr by [dynamical.org](https://dynamical.org/catalog/noaa-mrms-
 This document streams **the latest hour of rainfall** straight from
 `data.source.coop` into an in-browser Python kernel — no server, no download
 step. Click **Activate**, then run the cells top to bottom (the region read in
-step 4 fetches ~10 MB).
+step 4 fetches a few MB).
 
 ```{note}
 In a regular Python environment you don't need any of the store plumbing
