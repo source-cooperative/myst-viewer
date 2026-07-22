@@ -20,21 +20,30 @@ for examples. The custom store here exists only because the browser kernel
 
 ## 1. Install zarr
 
-The dataset is Zarr v3 with sharding, which needs `zarr>=3`. Pyodide ships
-compiled builds of the codecs it depends on (`numcodecs`, `crc32c`), so we
-install those first and then `zarr` itself without dependency resolution.
+The dataset is Zarr v3 with sharding, which needs `zarr>=3`. Its dependencies
+(`numcodecs`, `crc32c`, …) are declared as [PEP 723](https://peps.python.org/pep-0723/)
+inline metadata below, so the viewer installs them before this cell runs; `zarr`
+itself is then installed from a pinned wheel without dependency resolution.
 
 ```{code-cell} python
 :tags: [hide-input]
+# /// script
+# dependencies = [
+#     "numcodecs",
+#     "crc32c",
+#     "donfig",
+#     "typing-extensions",
+# ]
+# ///
 import micropip
 from pyodide.http import pyfetch
 
-await micropip.install(["numcodecs", "crc32c", "donfig", "typing-extensions"])
-
 # zarr 3 pins numcodecs>=0.14, which has no Pyodide build — the bundled
-# (compiled) 0.13 works fine — so zarr must install with deps=False. micropip
-# 0.8 has a download race with deps=False on network wheels, so fetch the
-# wheel ourselves and install it from the local filesystem.
+# (compiled) 0.13 works fine — so zarr installs with deps=False. That, plus the
+# exact wheel URL, is why zarr itself can't go in the PEP 723 block above (it
+# only emits a plain `%pip install <name>`); its dependencies do. micropip 0.8
+# has a download race with deps=False on network wheels, so fetch the wheel
+# ourselves and install it from the local filesystem.
 # (Also: no `import zarr` in THIS cell — the kernel pre-scans cell source and
 # would auto-install the old bundled zarr 2 before micropip runs.)
 WHEEL = "https://files.pythonhosted.org/packages/45/57/3329346940f78de49047ddcb03fdbca9e16450c3a942688bf24201a322e5/zarr-3.0.10-py3-none-any.whl"
