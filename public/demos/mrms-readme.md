@@ -30,6 +30,14 @@ Overnight hours can be quiet — gray means dry or no radar coverage.
 
 ```{code-cell} python
 :tags: [remove-input]
+# /// script
+# dependencies = [
+#     "numcodecs",
+#     "crc32c",
+#     "donfig",
+#     "typing-extensions",
+# ]
+# ///
 # Everything needed to draw the map lives in this one cell: install zarr 3,
 # define a fetch-based store (WebAssembly has no threads or sockets for
 # zarr's usual I/O), read the latest hour, and plot it. In a regular Python
@@ -43,11 +51,12 @@ from pyodide.http import pyfetch
 
 logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)  # keep the font-cache notice out of the output
 
-# zarr 3 pins numcodecs>=0.14, which has no Pyodide build — the bundled
-# (compiled) 0.13 works fine — so zarr must install with deps=False. micropip
-# 0.8 has a download race with deps=False on network wheels, so fetch the
-# wheel ourselves and install it from the local filesystem.
-await micropip.install(["numcodecs", "crc32c", "donfig", "typing-extensions"])
+# numcodecs, crc32c, donfig and typing-extensions come from the PEP 723 block
+# at the top of this cell. zarr itself can't: it pins numcodecs>=0.14 (no
+# Pyodide build — the bundled 0.13 works fine), so it must install with
+# deps=False from a pinned wheel, which a plain `%pip install <name>` can't
+# express. micropip 0.8 has a download race with deps=False on network wheels,
+# so fetch the wheel ourselves and install it from the local filesystem.
 WHEEL = "https://files.pythonhosted.org/packages/45/57/3329346940f78de49047ddcb03fdbca9e16450c3a942688bf24201a322e5/zarr-3.0.10-py3-none-any.whl"
 path = "/tmp/" + WHEEL.rsplit("/", 1)[1]
 open(path, "wb").write(await (await pyfetch(WHEEL)).bytes())
